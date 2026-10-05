@@ -113,7 +113,7 @@ export class FragmentCompiler {
 
   private trimCache(): void {
     while (this.cache.size > MAX_CACHE_ENTRIES) {
-      const oldest = this.cache.keys().next().value as string | undefined;
+      const oldest = this.cache.keys().next().value;
       if (!oldest) break;
       this.cache.delete(oldest);
     }
