@@ -34,3 +34,37 @@ jobs:
         run: npm run build
       - name: Verify plugin artifacts
         run: test -f main.js && test -f manifest.json && test -f styles.css
+      - name: Upload installable plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: latextifier-plugin
+          path: |
+            main.js
+            manifest.json
+            styles.css
+
+  tex-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Node dependencies
+        run: npm install --ignore-scripts
+      - name: Install TeX Live engines and latexmk
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             latexmk             texlive-latex-base             texlive-latex-recommended             texlive-latex-extra             texlive-fonts-recommended             texlive-xetex             texlive-luatex
+      - name: Verify TeX toolchain
+        run: |
+          pdflatex --version
+          xelatex --version
+          lualatex --version
+          latexmk --version
+          synctex help >/dev/null
+      - name: Compile real fixtures and exercise SyncTeX
+        env:
+          LATEXTIFIER_TEX_INTEGRATION: "1"
+        run: npx vitest run tests/integration-tex.test.ts tests/project-index.test.ts
