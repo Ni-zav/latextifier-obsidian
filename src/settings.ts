@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: LatextifierSettings = {
   previewVisibleByDefault: true,
   continuousSyncByDefault: true,
   navigatorVisibleByDefault: true,
+  liveLatexByDefault: true,
   autoCloseEnvironment: true,
   autoContinueItems: true,
   enableTexlab: true,
@@ -132,6 +133,16 @@ export class LatextifierSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.navigatorVisibleByDefault)
         .onChange(async (value) => {
           this.plugin.settings.navigatorVisibleByDefault = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("Live LaTeX reading")
+      .setDesc("Render visible math and reference chips in real TeX source until the cursor enters them.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.liveLatexByDefault)
+        .onChange(async (value) => {
+          this.plugin.settings.liveLatexByDefault = value;
           await this.plugin.saveSettings();
         }));
 
