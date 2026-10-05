@@ -110,6 +110,12 @@ export default class LatextifierPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "toggle-live-latex-reading",
+      name: "Toggle live LaTeX reading",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.toggleLiveLatex())
+    });
+
+    this.addCommand({
       id: "insert-latex-block",
       name: "Insert LaTeX block",
       editorCallback: (editor) => {
