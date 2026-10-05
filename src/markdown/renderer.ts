@@ -1,7 +1,7 @@
 import { finishRenderMath, loadPdfJs, renderMath } from "obsidian";
 import type { FragmentOutput } from "../types";
 import { classifyFragment, stripFragmentDirective } from "./classifier";
-import { FragmentCompiler } from "./fragment-compiler";
+import { FragmentCompiler, type FragmentCompileOptions } from "./fragment-compiler";
 
 interface PdfViewport {
   width: number;
@@ -37,7 +37,11 @@ interface PdfJs {
 export class MarkdownLatexRenderer {
   constructor(private readonly compiler: FragmentCompiler) {}
 
-  async render(source: string, container: HTMLElement): Promise<void> {
+  async render(
+    source: string,
+    container: HTMLElement,
+    options: FragmentCompileOptions = {}
+  ): Promise<void> {
     container.empty();
     container.addClass("latextifier-markdown-block");
 
@@ -56,7 +60,7 @@ export class MarkdownLatexRenderer {
 
     const loading = container.createDiv({ cls: "latextifier-fragment-loading", text: "Rendering LaTeX…" });
     try {
-      const output = await this.compiler.compile(source);
+      const output = await this.compiler.compile(source, options);
       if (!container.isConnected) return;
       loading.remove();
       await renderCompiled(output, container);
