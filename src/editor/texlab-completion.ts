@@ -1,8 +1,8 @@
-import type {
-  CompletionContext,
-  CompletionResult,
-  CompletionSource,
-  snippet
+import {
+  snippet,
+  type CompletionContext,
+  type CompletionResult,
+  type CompletionSource
 } from "@codemirror/autocomplete";
 import type { TexlabClient } from "../core/texlab";
 
@@ -57,6 +57,6 @@ function completionToken(context: CompletionContext): { from: number } | null {
 
 function normalizeLspSnippet(value: string): string {
   return value
-    .replace(/\\$\\{(\\d+):([^}]*)\\}/g, (_match, index: string, placeholder: string) => "\${" + index + ":" + placeholder + "}")
-    .replace(/\\$(\\d+)/g, (_match, index: string) => "\${" + index + "}");
+    .replace(/\$\{(\d+):([^}]*)\}/g, (_match, index: string, placeholder: string) => "\${" + index + ":" + placeholder + "}")
+    .replace(/\$(\d+)/g, (_match, index: string) => "\${" + index + "}");
 }
