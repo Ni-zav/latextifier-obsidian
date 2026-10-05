@@ -71,6 +71,7 @@ async function compile(root: string, engine: Engine, mode: "fast" | "full"): Pro
     previewVisibleByDefault: true,
     continuousSyncByDefault: true,
     navigatorVisibleByDefault: true,
+    liveLatexByDefault: true,
     autoCloseEnvironment: true,
     autoContinueItems: true,
     enableTexlab: false,
