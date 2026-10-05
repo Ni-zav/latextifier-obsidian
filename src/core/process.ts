@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { delimiter, extname, join } from "node:path";
 import { platform } from "node:os";
 
@@ -44,7 +44,7 @@ export async function runProcess(
   const started = Date.now();
 
   return await new Promise<ProcessResult>((resolve, reject) => {
-    let child: ChildProcessWithoutNullStreams;
+    let child: ChildProcess;
     try {
       child = spawn(command, args, {
         cwd: options.cwd,
@@ -91,10 +91,10 @@ export async function runProcess(
       options.signal?.removeEventListener("abort", onAbort);
     };
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr?.on("data", (chunk: string) => { stderr += chunk; });
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") finishReject(new ToolNotFoundError(command));
       else finishReject(error);
