@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { FragmentOutput, LatextifierSettings } from "../types";
 import { parseLatexLog } from "../core/log";
@@ -9,18 +9,26 @@ import { stripFragmentDirective } from "./classifier";
 
 const MAX_CACHE_ENTRIES = 96;
 
+export interface FragmentCompileOptions {
+  extraPreamble?: string;
+  contextDir?: string;
+}
+
 export class FragmentCompiler {
   private readonly cache = new Map<string, Promise<FragmentOutput>>();
 
   constructor(private readonly settings: () => LatextifierSettings) {}
 
-  compile(source: string): Promise<FragmentOutput> {
+  compile(source: string, options: FragmentCompileOptions = {}): Promise<FragmentOutput> {
     const settings = this.settings();
     const clean = stripFragmentDirective(source);
+    const combinedPreamble = [settings.fragmentPreamble, options.extraPreamble ?? ""].filter(Boolean).join("\n");
     const key = createHash("sha256")
       .update(settings.fragmentEngine)
       .update("\0")
-      .update(settings.fragmentPreamble)
+      .update(combinedPreamble)
+      .update("\0")
+      .update(options.contextDir ?? "")
       .update("\0")
       .update(String(settings.allowShellEscape))
       .update("\0")
@@ -30,7 +38,10 @@ export class FragmentCompiler {
     const existing = this.cache.get(key);
     if (existing) return existing;
 
-    const work = this.compileUncached(clean, key).catch((error) => {
+    const work = this.compileUncached(clean, key, {
+      ...options,
+      extraPreamble: combinedPreamble
+    }).catch((error) => {
       this.cache.delete(key);
       throw error;
     });
@@ -43,7 +54,11 @@ export class FragmentCompiler {
     this.cache.clear();
   }
 
-  private async compileUncached(source: string, key: string): Promise<FragmentOutput> {
+  private async compileUncached(
+    source: string,
+    key: string,
+    options: FragmentCompileOptions
+  ): Promise<FragmentOutput> {
     const settings = this.settings();
     const directory = join(tmpdir(), "latextifier", "fragments", key.slice(0, 24));
     await fs.mkdir(directory, { recursive: true });
@@ -52,7 +67,7 @@ export class FragmentCompiler {
     const pdfPath = join(directory, "fragment.pdf");
     const logPath = join(directory, "fragment.log");
     const svgPath = join(directory, "fragment.svg");
-    await fs.writeFile(texPath, wrapFragment(source, settings.fragmentPreamble), "utf8");
+    await fs.writeFile(texPath, wrapFragment(source, options.extraPreamble ?? ""), "utf8");
 
     const args = [
       "-interaction=nonstopmode",
@@ -69,7 +84,7 @@ export class FragmentCompiler {
       args,
       {
         cwd: directory,
-        env: texEnvironment(settings.texBinDir),
+        env: fragmentEnvironment(settings.texBinDir, options.contextDir),
         timeoutMs: 45000
       }
     );
@@ -80,13 +95,13 @@ export class FragmentCompiler {
       && !/\\documentclass\b/.test(source)
       && /standalone\.cls[\s\S]*(?:not found|cannot find)|File .*standalone\.cls.*not found/i.test(rawLog)
     ) {
-      await fs.writeFile(texPath, wrapFragmentFallback(source, settings.fragmentPreamble), "utf8");
+      await fs.writeFile(texPath, wrapFragmentFallback(source, options.extraPreamble ?? ""), "utf8");
       run = await runProcess(
         toolPath(settings.texBinDir, settings.fragmentEngine),
         args,
         {
           cwd: directory,
-          env: texEnvironment(settings.texBinDir),
+          env: fragmentEnvironment(settings.texBinDir, options.contextDir),
           timeoutMs: 45000
         }
       );
@@ -106,7 +121,7 @@ export class FragmentCompiler {
         ["--pdf", "--page=1", "--bbox=min", "--exact", "--no-fonts", "-o", svgPath, pdfPath],
         {
           cwd: directory,
-          env: texEnvironment(settings.texBinDir),
+          env: fragmentEnvironment(settings.texBinDir, options.contextDir),
           timeoutMs: 30000
         }
       );
@@ -176,6 +191,14 @@ export function wrapFragmentFallback(source: string, extraPreamble: string): str
     "\\end{document}",
     ""
   ].filter(Boolean).join("\n");
+}
+
+function fragmentEnvironment(binDir: string, contextDir?: string): NodeJS.ProcessEnv {
+  const env = texEnvironment(binDir);
+  if (!contextDir) return env;
+  const current = env.TEXINPUTS ?? "";
+  env.TEXINPUTS = contextDir + delimiter + current + delimiter;
+  return env;
 }
 
 async function fragmentLog(stdout: string, stderr: string, logPath: string): Promise<string> {
