@@ -1,4 +1,4 @@
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import type { BuildMode, BuildResult, LatextifierSettings } from "../types";
 import { ProjectCompiler } from "./compiler";
 
@@ -39,7 +39,7 @@ export class LatexSession {
     const absolute = resolve(path);
     return absolute === resolve(this.root)
       || this.compiler.dependencies.has(absolute)
-      || absolute.startsWith(resolve(dirname(this.root)) + "/");
+      || absolute.startsWith(resolve(dirname(this.root)) + sep);
   }
 
   dispose(): void {
