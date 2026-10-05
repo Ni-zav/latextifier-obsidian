@@ -16,9 +16,8 @@ import {
 import { searchKeymap } from "@codemirror/search";
 import { Notice, TextFileView, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import type LatextifierPlugin from "../main";
-import type { BuildMode, Diagnostic } from "../types";
+import type { BuildMode, Diagnostic, SourceLocation } from "../types";
 import type { LatexSession, SessionEvent } from "../core/session";
-import type { ProjectLocation } from "../core/project-index";
 import type { PdfPoint } from "../pdf/pdf-renderer";
 import { PdfRenderer } from "../pdf/pdf-renderer";
 import { createLatexCompletionSource } from "./completion";
@@ -459,7 +458,7 @@ export class LatexEditorView extends TextFileView {
     new Notice(hover.markdown.slice(0, 3500), 9000);
   }
 
-  private async openProjectLocation(location: ProjectLocation, focus: boolean): Promise<void> {
+  private async openProjectLocation(location: SourceLocation, focus: boolean): Promise<void> {
     this.guardSync(420);
     await this.plugin.openSourceLocation(this.leaf, location, focus);
   }
