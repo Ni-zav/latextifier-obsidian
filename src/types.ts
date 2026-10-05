@@ -58,6 +58,7 @@ export interface LatextifierSettings {
   previewVisibleByDefault: boolean;
   continuousSyncByDefault: boolean;
   navigatorVisibleByDefault: boolean;
+  liveLatexByDefault: boolean;
   autoCloseEnvironment: boolean;
   autoContinueItems: boolean;
   enableTexlab: boolean;
