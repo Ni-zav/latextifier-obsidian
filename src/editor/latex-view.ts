@@ -25,6 +25,7 @@ import { createTexlabCompletionSource } from "./texlab-completion";
 import { latexHighlightExtension } from "./highlight";
 import { ProjectNavigator } from "./project-navigator";
 import { smartEditingExtension } from "./smart-editing";
+import { liveLatexReadingExtension, refreshLiveLatexEffect } from "./live-latex";
 
 export const LATEX_VIEW_TYPE = "latextifier-tex-editor";
 
@@ -47,9 +48,11 @@ export class LatexEditorView extends TextFileView {
   private previewVisible = true;
   private navigatorVisible = true;
   private continuousSync = true;
+  private liveLatex = true;
   private syncGuardUntil = 0;
   private scrollLockButton: HTMLButtonElement | null = null;
   private navigatorButton: HTMLButtonElement | null = null;
+  private liveLatexButton: HTMLButtonElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, readonly plugin: LatextifierPlugin) {
     super(leaf);
@@ -81,6 +84,7 @@ export class LatexEditorView extends TextFileView {
     this.addToolbarButton(actions, "locate-fixed", "Forward SyncTeX", () => void this.forwardSearch());
     this.scrollLockButton = this.addToolbarButton(actions, "link", "Toggle continuous source and PDF sync", () => this.toggleContinuousSync());
     this.navigatorButton = this.addToolbarButton(actions, "panel-left", "Toggle project navigator", () => this.toggleNavigator());
+    this.liveLatexButton = this.addToolbarButton(actions, "eye", "Toggle live LaTeX reading", () => this.toggleLiveLatex());
     this.addToolbarButton(actions, "book-open", "TexLab hover information", () => void this.showTexlabHover());
     this.addToolbarButton(actions, "panel-right", "Toggle PDF", () => this.togglePreview());
     this.addToolbarButton(actions, "zoom-out", "Zoom out", () => this.renderer?.zoomOut());
@@ -124,6 +128,10 @@ export class LatexEditorView extends TextFileView {
           highlightActiveLine(),
           EditorView.lineWrapping,
           latexHighlightExtension(),
+          liveLatexReadingExtension(
+            () => this.liveLatex,
+            () => this.session?.index.current ?? null
+          ),
           smartEditingExtension(() => this.plugin.settings),
           autocompletion({
             override: [projectCompletion, texlabCompletion],
@@ -150,6 +158,7 @@ export class LatexEditorView extends TextFileView {
     this.previewVisible = this.plugin.settings.previewVisibleByDefault;
     this.navigatorVisible = this.plugin.settings.navigatorVisibleByDefault;
     this.continuousSync = this.plugin.settings.continuousSyncByDefault;
+    this.liveLatex = this.plugin.settings.liveLatexByDefault;
 
     this.renderer = new PdfRenderer(this.previewPane, {
       onInversePoint: (point) => void this.inverseSearch(point, true),
@@ -264,6 +273,12 @@ export class LatexEditorView extends TextFileView {
     if (this.continuousSync) this.scheduleSourceSync();
   }
 
+  toggleLiveLatex(): void {
+    this.liveLatex = !this.liveLatex;
+    this.editor?.dispatch({ effects: refreshLiveLatexEffect.of(undefined) });
+    this.updateToggleButtons();
+  }
+
   focusLocation(line: number, column = 0, focus = true): void {
     if (!this.editor || line < 1 || line > this.editor.state.doc.lines) return;
     const target = this.editor.state.doc.line(line);
@@ -315,6 +330,7 @@ export class LatexEditorView extends TextFileView {
 
     if (event.type === "index") {
       this.navigator?.setSnapshot(event.snapshot);
+      this.editor?.dispatch({ effects: refreshLiveLatexEffect.of(undefined) });
       return;
     }
 
@@ -520,6 +536,7 @@ export class LatexEditorView extends TextFileView {
   private updateToggleButtons(): void {
     setPressed(this.scrollLockButton, this.continuousSync);
     setPressed(this.navigatorButton, this.navigatorVisible);
+    setPressed(this.liveLatexButton, this.liveLatex);
   }
 
   private addToolbarButton(
