@@ -1,0 +1,10 @@
+{
+  "id": "latextifier",
+  "name": "Latextifier",
+  "version": "0.1.0",
+  "minAppVersion": "1.13.0",
+  "description": "Render LaTeX blocks in Markdown and edit real TeX projects with live PDF preview and SyncTeX.",
+  "author": "Nigel Ihza Firdausy",
+  "authorUrl": "https://github.com/Ni-zav",
+  "isDesktopOnly": true
+}

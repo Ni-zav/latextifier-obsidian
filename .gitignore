@@ -1,0 +1,11 @@
+node_modules/
+main.js
+*.map
+data.json
+coverage/
+.DS_Store
+.vscode/
+.idea/
+*.log
+target/
+dist/
