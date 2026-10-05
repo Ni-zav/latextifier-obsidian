@@ -54,7 +54,7 @@ export async function runProcess(
         stdio: ["ignore", "pipe", "pipe"]
       });
     } catch (error) {
-      reject(error);
+      reject(error instanceof Error ? error : new Error(String(error)));
       return;
     }
 
@@ -81,13 +81,13 @@ export async function runProcess(
       finishReject(new Error("Process aborted."));
     };
 
-    const timeout = setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       child.kill();
       finishReject(new Error("Process timed out after " + String(options.timeoutMs ?? 60000) + " ms."));
     }, options.timeoutMs ?? 60000);
 
     const cleanup = () => {
-      clearTimeout(timeout);
+      window.clearTimeout(timeout);
       options.signal?.removeEventListener("abort", onAbort);
     };
 
