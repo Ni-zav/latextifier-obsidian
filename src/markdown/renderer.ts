@@ -70,8 +70,11 @@ export class MarkdownLatexRenderer {
 async function renderCompiled(output: FragmentOutput, container: HTMLElement): Promise<void> {
   if (output.kind === "svg" && output.svg) {
     const holder = container.createDiv({ cls: "latextifier-fragment-svg" });
-    holder.innerHTML = output.svg;
-    holder.querySelector("svg")?.setAttribute("role", "img");
+    const parsed = new DOMParser().parseFromString(output.svg, "image/svg+xml");
+    if (parsed.querySelector("parsererror")) throw new Error("Generated SVG could not be parsed safely.");
+    const svg = parsed.documentElement;
+    svg.setAttribute("role", "img");
+    holder.appendChild(container.ownerDocument.importNode(svg, true));
     return;
   }
 
