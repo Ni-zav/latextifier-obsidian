@@ -9,6 +9,7 @@ export interface TexlabCompletion {
   detail?: string;
   insertText?: string;
   sortText?: string;
+  insertTextFormat?: number;
 }
 
 export interface TexlabHover {
@@ -115,7 +116,8 @@ export class TexlabClient {
       detail: stringField(item, "detail"),
       insertText: stringField(item, "insertText")
         ?? stringField(recordField(item, "textEdit"), "newText"),
-      sortText: stringField(item, "sortText")
+      sortText: stringField(item, "sortText"),
+      insertTextFormat: numberField(item, "insertTextFormat")
     })).filter((item) => item.label);
   }
 
@@ -199,7 +201,7 @@ export class TexlabClient {
             synchronization: { dynamicRegistration: false, didSave: true },
             completion: {
               dynamicRegistration: false,
-              completionItem: { snippetSupport: false, documentationFormat: ["markdown", "plaintext"] }
+              completionItem: { snippetSupport: true, documentationFormat: ["markdown", "plaintext"] }
             },
             hover: { dynamicRegistration: false, contentFormat: ["markdown", "plaintext"] },
             publishDiagnostics: { relatedInformation: true }
@@ -368,6 +370,11 @@ function recordField(record: Record<string, unknown>, key: string): Record<strin
 function stringField(record: Record<string, unknown> | null, key: string): string | undefined {
   const value = record?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function numberField(record: Record<string, unknown> | null, key: string): number | undefined {
+  const value = record?.[key];
+  return typeof value === "number" ? value : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
