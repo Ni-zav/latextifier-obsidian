@@ -13,6 +13,12 @@ export const DEFAULT_SETTINGS: LatextifierSettings = {
   dvisvgmPath: "",
   fragmentPreamble: "",
   previewVisibleByDefault: true,
+  continuousSyncByDefault: true,
+  navigatorVisibleByDefault: true,
+  autoCloseEnvironment: true,
+  autoContinueItems: true,
+  enableTexlab: true,
+  texlabPath: "",
   allowShellEscape: false
 };
 
@@ -106,6 +112,67 @@ export class LatextifierSettingTab extends PluginSettingTab {
           this.plugin.settings.previewVisibleByDefault = value;
           await this.plugin.saveSettings();
         }));
+
+    new Setting(containerEl).setName("Editing intelligence").setHeading();
+
+    new Setting(containerEl)
+      .setName("Continuous source and PDF sync")
+      .setDesc("Keep the source and PDF panes synchronized while scrolling using SyncTeX.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.continuousSyncByDefault)
+        .onChange(async (value) => {
+          this.plugin.settings.continuousSyncByDefault = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("Show project navigator by default")
+      .setDesc("Show structure, TODOs, project files, references, and citations beside the editor.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.navigatorVisibleByDefault)
+        .onChange(async (value) => {
+          this.plugin.settings.navigatorVisibleByDefault = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("Auto-close environments")
+      .setDesc("Insert a matching end environment when completing a begin environment.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.autoCloseEnvironment)
+        .onChange(async (value) => {
+          this.plugin.settings.autoCloseEnvironment = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("Continue list items")
+      .setDesc("Press Enter after an item to insert the next item with matching indentation.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.autoContinueItems)
+        .onChange(async (value) => {
+          this.plugin.settings.autoContinueItems = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl).setName("TexLab").setHeading();
+
+    new Setting(containerEl)
+      .setName("Enable TexLab")
+      .setDesc("Use TexLab when installed for language-server completions, hover, and diagnostics. Built-in project intelligence remains available without it.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.enableTexlab)
+        .onChange(async (value) => {
+          this.plugin.settings.enableTexlab = value;
+          await this.plugin.saveSettings();
+        }));
+
+    pathSetting(containerEl, "TexLab executable", this.plugin.settings.texlabPath, async (value) => {
+      this.plugin.settings.texlabPath = value;
+      await this.plugin.saveSettings();
+    });
+
+    new Setting(containerEl).setName("Security").setHeading();
 
     new Setting(containerEl)
       .setName("Allow TeX shell escape")
