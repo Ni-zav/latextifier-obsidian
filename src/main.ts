@@ -140,6 +140,10 @@ export default class LatextifierPlugin extends Plugin {
     this.fragmentCompiler.clear();
   }
 
+  async renderLatexBlock(source: string, container: HTMLElement): Promise<void> {
+    await this.markdownRenderer.render(source, container);
+  }
+
   async acquireSessionFor(file: TFile): Promise<{ root: string; session: LatexSession }> {
     const root = await resolveProjectRoot(this.absolutePath(file.path), this.vaultRoot());
     return { root, session: this.sessions.acquire(root) };
