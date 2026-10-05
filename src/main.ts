@@ -34,11 +34,13 @@ export default class LatextifierPlugin extends Plugin {
     this.registerView(LATEX_VIEW_TYPE, (leaf) => new LatexEditorView(leaf, this));
     this.registerExtensions(["tex", "sty", "cls"], LATEX_VIEW_TYPE);
 
-    this.registerMarkdownCodeBlockProcessor("latex", async (source, el) => {
-      await this.markdownRenderer.render(source, el);
+    this.registerMarkdownCodeBlockProcessor("latex", async (source, el, context) => {
+      const contextDir = context.sourcePath ? dirname(this.absolutePath(context.sourcePath)) : undefined;
+      await this.markdownRenderer.render(source, el, { contextDir });
     });
-    this.registerMarkdownCodeBlockProcessor("tex", async (source, el) => {
-      await this.markdownRenderer.render(source, el);
+    this.registerMarkdownCodeBlockProcessor("tex", async (source, el, context) => {
+      const contextDir = context.sourcePath ? dirname(this.absolutePath(context.sourcePath)) : undefined;
+      await this.markdownRenderer.render(source, el, { contextDir });
     });
     this.registerEditorExtension(latexBlockLivePreview(this.markdownRenderer));
 
@@ -154,6 +156,17 @@ export default class LatextifierPlugin extends Plugin {
 
   async renderLatexBlock(source: string, container: HTMLElement): Promise<void> {
     await this.markdownRenderer.render(source, container);
+  }
+
+  async renderProjectLatexBlock(
+    source: string,
+    container: HTMLElement,
+    session: LatexSession
+  ): Promise<void> {
+    await this.markdownRenderer.render(source, container, {
+      extraPreamble: session.index.current.preamble,
+      contextDir: dirname(session.root)
+    });
   }
 
   async acquireSessionFor(file: TFile): Promise<{ root: string; session: LatexSession }> {
