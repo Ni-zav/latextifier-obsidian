@@ -1,18 +1,23 @@
 import { dirname, resolve, sep } from "node:path";
-import type { BuildMode, BuildResult, LatextifierSettings } from "../types";
+import type { BuildMode, BuildResult, Diagnostic, LatextifierSettings } from "../types";
 import { ProjectCompiler } from "./compiler";
 import { ProjectIndex, type ProjectSnapshot } from "./project-index";
+import { TexlabClient } from "./texlab";
 
 export type SessionEvent =
   | { type: "start"; mode: BuildMode }
   | { type: "result"; result: BuildResult }
   | { type: "index"; snapshot: ProjectSnapshot }
+  | { type: "texlab-diagnostics"; file: string; diagnostics: Diagnostic[] }
+  | { type: "texlab-status"; status: "starting" | "ready" | "unavailable" | "stopped" }
   | { type: "failure"; error: Error };
 
 export class LatexSession {
   private readonly listeners = new Set<(event: SessionEvent) => void>();
   readonly compiler: ProjectCompiler;
   readonly index: ProjectIndex;
+  readonly texlab: TexlabClient;
+  readonly texlabDiagnostics = new Map<string, Diagnostic[]>();
   lastResult: BuildResult | null = null;
 
   constructor(
@@ -20,6 +25,14 @@ export class LatexSession {
     settings: () => LatextifierSettings
   ) {
     this.index = new ProjectIndex(root);
+    this.texlab = new TexlabClient(root, settings, {
+      onDiagnostics: (file, diagnostics) => {
+        this.texlabDiagnostics.set(resolve(file), diagnostics);
+        this.emit({ type: "texlab-diagnostics", file: resolve(file), diagnostics });
+      },
+      onStatus: (status) => this.emit({ type: "texlab-status", status })
+    });
+
     this.compiler = new ProjectCompiler(root, settings, {
       onStart: (mode) => this.emit({ type: "start", mode }),
       onResult: (result) => {
@@ -57,9 +70,19 @@ export class LatexSession {
       || absolute.startsWith(resolve(dirname(this.root)) + sep);
   }
 
+  combinedDiagnostics(file?: string): Diagnostic[] {
+    const compiler = this.lastResult?.diagnostics ?? [];
+    if (!file) return [...compiler, ...[...this.texlabDiagnostics.values()].flat()];
+    return [
+      ...compiler.filter((item) => !item.file || resolve(item.file) === resolve(file)),
+      ...(this.texlabDiagnostics.get(resolve(file)) ?? [])
+    ];
+  }
+
   dispose(): void {
     this.index.invalidate();
     this.compiler.dispose();
+    void this.texlab.dispose();
     this.listeners.clear();
   }
 
