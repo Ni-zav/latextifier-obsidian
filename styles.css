@@ -407,3 +407,44 @@
     overflow-x: auto;
   }
 }
+
+
+.latextifier-live-math {
+  vertical-align: baseline;
+}
+
+.latextifier-live-math-inline {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 0 2px;
+  border-radius: var(--radius-s);
+}
+
+.latextifier-live-math-display {
+  display: block;
+  width: 100%;
+  padding: 8px 4px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.latextifier-live-math.is-fallback {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+.latextifier-live-reference {
+  display: inline-flex;
+  align-items: center;
+  max-width: 28ch;
+  padding: 1px 5px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-secondary-alt);
+  color: var(--text-accent);
+  font-size: 0.9em;
+  line-height: 1.35;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
