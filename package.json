@@ -1,0 +1,36 @@
+{
+  "name": "latextifier",
+  "version": "0.1.0",
+  "description": "Fast LaTeX blocks in Markdown plus live .tex editing and PDF preview for Obsidian.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "check": "tsc --noEmit --skipLibCheck",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "ci": "npm run check && npm run test && npm run lint && npm run build"
+  },
+  "keywords": ["obsidian", "latex", "tex", "pdf", "synctex", "mathjax"],
+  "author": "Nigel Ihza Firdausy",
+  "license": "MIT",
+  "devDependencies": {
+    "@codemirror/autocomplete": "6.20.3",
+    "@codemirror/commands": "6.10.4",
+    "@codemirror/search": "6.7.1",
+    "@codemirror/state": "6.7.0",
+    "@codemirror/view": "6.43.5",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.15.17",
+    "esbuild": "0.25.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "globals": "^17.6.0",
+    "jiti": "^2.6.1",
+    "obsidian": "1.13.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.59.1",
+    "vitest": "^3.2.4"
+  }
+}
