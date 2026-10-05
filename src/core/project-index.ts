@@ -389,7 +389,7 @@ export async function searchProjectText(
   const files = [...snapshot.files, ...snapshot.bibFiles];
 
   for (const file of files) {
-    const text = await this.readFile(file);
+    const text = await readUtf8(file);
     if (text === null) continue;
     const lines = text.split(/\r?\n/);
     for (let index = 0; index < lines.length; index += 1) {
