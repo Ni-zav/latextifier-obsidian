@@ -27,6 +27,7 @@ import { ProjectNavigator } from "./project-navigator";
 import { smartEditingExtension } from "./smart-editing";
 import { liveLatexReadingExtension, refreshLiveLatexEffect } from "./live-latex";
 import { ReferenceGraphModal } from "./reference-graph-modal";
+import { SymbolPaletteModal } from "./symbol-palette";
 
 export const LATEX_VIEW_TYPE = "latextifier-tex-editor";
 
@@ -87,6 +88,7 @@ export class LatexEditorView extends TextFileView {
     this.navigatorButton = this.addToolbarButton(actions, "panel-left", "Toggle project navigator", () => this.toggleNavigator());
     this.liveLatexButton = this.addToolbarButton(actions, "eye", "Toggle live LaTeX reading", () => this.toggleLiveLatex());
     this.addToolbarButton(actions, "git-fork", "Open reference graph", () => this.showReferenceGraph());
+    this.addToolbarButton(actions, "keyboard", "Open LaTeX symbol palette", () => this.showSymbolPalette());
     this.addToolbarButton(actions, "book-open", "TexLab hover information", () => void this.showTexlabHover());
     this.addToolbarButton(actions, "panel-right", "Toggle PDF", () => this.togglePreview());
     this.addToolbarButton(actions, "zoom-out", "Zoom out", () => this.renderer?.zoomOut());
@@ -282,6 +284,10 @@ export class LatexEditorView extends TextFileView {
     this.updateToggleButtons();
   }
 
+  showSymbolPalette(): void {
+    new SymbolPaletteModal(this.plugin.app, (latex) => this.insertLatex(latex)).open();
+  }
+
   showReferenceGraph(): void {
     const snapshot = this.session?.index.current;
     if (!snapshot || snapshot.references.length === 0) {
@@ -291,6 +297,17 @@ export class LatexEditorView extends TextFileView {
     new ReferenceGraphModal(this.plugin.app, snapshot, {
       onOpen: (location) => void this.openProjectLocation(location, true)
     }).open();
+  }
+
+  insertLatex(value: string): void {
+    if (!this.editor) return;
+    const selection = this.editor.state.selection.main;
+    const cursorOffset = value.indexOf("{}") >= 0 ? value.indexOf("{}") + 1 : value.length;
+    this.editor.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: value },
+      selection: { anchor: selection.from + cursorOffset }
+    });
+    this.editor.focus();
   }
 
   focusLocation(line: number, column = 0, focus = true): void {
