@@ -261,6 +261,7 @@ function sanitizeSettings(value: unknown): LatextifierSettings {
   if (typeof value.previewVisibleByDefault === "boolean") settings.previewVisibleByDefault = value.previewVisibleByDefault;
   if (typeof value.continuousSyncByDefault === "boolean") settings.continuousSyncByDefault = value.continuousSyncByDefault;
   if (typeof value.navigatorVisibleByDefault === "boolean") settings.navigatorVisibleByDefault = value.navigatorVisibleByDefault;
+  if (typeof value.liveLatexByDefault === "boolean") settings.liveLatexByDefault = value.liveLatexByDefault;
   if (typeof value.autoCloseEnvironment === "boolean") settings.autoCloseEnvironment = value.autoCloseEnvironment;
   if (typeof value.autoContinueItems === "boolean") settings.autoContinueItems = value.autoContinueItems;
   if (typeof value.enableTexlab === "boolean") settings.enableTexlab = value.enableTexlab;
