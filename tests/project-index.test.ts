@@ -26,6 +26,7 @@ describe("ProjectIndex", () => {
     expect(snapshot.citations.map((item) => item.key)).toContain("knuth1984texbook");
     expect(snapshot.outline.some((item) => item.title === "Integration")).toBe(true);
     expect(snapshot.todos.some((item) => item.text.includes("verify project index"))).toBe(true);
+    expect(snapshot.references.some((item) => item.kind === "cite" && item.to === "knuth1984texbook")).toBe(true);
 
     const hits = await searchProjectText(snapshot, "Einstein");
     expect(hits.some((item) => item.file.endsWith("chapter.tex"))).toBe(true);
