@@ -5,7 +5,7 @@ import type {
 } from "../core/project-index";
 import { searchProjectText } from "../core/project-index";
 
-type NavigatorTab = "structure" | "todos" | "files" | "refs" | "citations";
+type NavigatorTab = "structure" | "todos" | "files" | "refs" | "citations" | "graph";
 
 export interface ProjectNavigatorCallbacks {
   onOpen(location: ProjectLocation): void;
@@ -43,6 +43,7 @@ export class ProjectNavigator {
     this.addTab("files", "Files");
     this.addTab("refs", "Refs");
     this.addTab("citations", "Citations");
+    this.addTab("graph", "Graph");
 
     this.bodyEl = this.element.createDiv({ cls: "latextifier-navigator-body" });
     this.renderEmpty("Indexing project…");
@@ -160,15 +161,28 @@ export class ProjectNavigator {
       return;
     }
 
-    if (snapshot.citations.length === 0) return this.renderEmpty("No citations found.");
-    for (const item of snapshot.citations) {
-      const detail = [item.author, item.year].filter(Boolean).join(" · ")
-        || shortRelative(snapshot.root, item.file) + ":" + String(item.line);
+    if (this.activeTab === "citations") {
+      if (snapshot.citations.length === 0) return this.renderEmpty("No citations found.");
+      for (const item of snapshot.citations) {
+        const detail = [item.author, item.year].filter(Boolean).join(" · ")
+          || shortRelative(snapshot.root, item.file) + ":" + String(item.line);
+        this.addLocationRow(
+          item,
+          item.title ? item.key + " — " + item.title : item.key,
+          detail,
+          "latextifier-nav-citation"
+        );
+      }
+      return;
+    }
+
+    if (snapshot.references.length === 0) return this.renderEmpty("No project references found.");
+    for (const item of snapshot.references) {
       this.addLocationRow(
         item,
-        item.title ? item.key + " — " + item.title : item.key,
-        detail,
-        "latextifier-nav-citation"
+        item.from.replace(/^file:/, "") + " → " + item.to,
+        item.kind + " · " + shortRelative(snapshot.root, item.file) + ":" + String(item.line),
+        "latextifier-nav-graph"
       );
     }
   }
