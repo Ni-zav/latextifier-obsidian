@@ -147,7 +147,7 @@ export function sanitizeSvg(svg: string): string {
   const doc = parser.parseFromString(svg, "image/svg+xml");
   if (doc.querySelector("parsererror")) return "";
 
-  for (const blocked of doc.querySelectorAll("script, foreignObject, iframe, object, embed")) {
+  for (const blocked of Array.from(doc.querySelectorAll("script, foreignObject, iframe, object, embed"))) {
     blocked.remove();
   }
   for (const element of Array.from(doc.querySelectorAll("*"))) {
