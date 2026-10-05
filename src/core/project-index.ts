@@ -47,6 +47,12 @@ export interface ProjectEnvironment extends ProjectLocation {
   name: string;
 }
 
+export interface ProjectReference extends ProjectLocation {
+  from: string;
+  to: string;
+  kind: "ref" | "cite";
+}
+
 export interface ProjectSnapshot {
   root: string;
   files: string[];
@@ -56,6 +62,7 @@ export interface ProjectSnapshot {
   citations: ProjectCitation[];
   commands: ProjectCommand[];
   environments: ProjectEnvironment[];
+  references: ProjectReference[];
   outline: ProjectOutlineItem[];
   todos: ProjectTodo[];
   updatedAt: number;
@@ -70,6 +77,7 @@ const EMPTY_SNAPSHOT: ProjectSnapshot = {
   citations: [],
   commands: [],
   environments: [],
+  references: [],
   outline: [],
   todos: [],
   updatedAt: 0
@@ -145,6 +153,7 @@ class IndexBuilder {
   private readonly citations = new Map<string, ProjectCitation>();
   private readonly commands = new Map<string, ProjectCommand>();
   private readonly environments = new Map<string, ProjectEnvironment>();
+  private readonly references: ProjectReference[] = [];
   private readonly outline: ProjectOutlineItem[] = [];
   private readonly todos: ProjectTodo[] = [];
 
@@ -166,6 +175,7 @@ class IndexBuilder {
       citations: [...this.citations.values()].sort((a, b) => a.key.localeCompare(b.key)),
       commands: [...this.commands.values()].sort((a, b) => a.name.localeCompare(b.name)),
       environments: [...this.environments.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      references: this.references.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column),
       outline: this.outline.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column),
       todos: this.todos.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column),
       updatedAt: Date.now()
@@ -203,6 +213,8 @@ class IndexBuilder {
   }
 
   private parseTex(file: string, text: string): void {
+    this.parseReferences(file, text);
+
     for (const match of findAll(PACKAGE_RE, text)) {
       for (const name of (match[1] ?? "").split(",")) {
         const pkg = name.trim();
@@ -256,6 +268,31 @@ class IndexBuilder {
         text: value || "TODO",
         ...locationOf(text, match.index ?? 0, file)
       });
+    }
+  }
+
+  private parseReferences(file: string, text: string): void {
+    const token = /\\label\s*\{([^}]+)\}|\\(ref|eqref|autoref|cref|Cref|pageref|cite|parencite|textcite|autocite|footcite|citep|citet)\*?(?:\[[^\]]*\])?\{([^}]+)\}/g;
+    let context = "file:" + file;
+    let match: RegExpExecArray | null;
+    while ((match = token.exec(text)) !== null) {
+      const label = match[1]?.trim();
+      if (label) {
+        context = label;
+        continue;
+      }
+      const command = match[2] ?? "";
+      const kind: "ref" | "cite" = /cite/i.test(command) ? "cite" : "ref";
+      for (const raw of (match[3] ?? "").split(",")) {
+        const target = raw.trim();
+        if (!target) continue;
+        this.references.push({
+          from: context,
+          to: target,
+          kind,
+          ...locationOf(text, match.index ?? 0, file)
+        });
+      }
     }
   }
 
