@@ -12,15 +12,18 @@ import type { ProjectSnapshot } from "../core/project-index";
 
 export const refreshLiveLatexEffect = StateEffect.define<void>();
 
+export type FullLatexRenderer = (source: string, container: HTMLElement) => Promise<void>;
+
 export function liveLatexReadingExtension(
   enabled: () => boolean,
-  getSnapshot: () => ProjectSnapshot | null
+  getSnapshot: () => ProjectSnapshot | null,
+  renderFullLatex?: FullLatexRenderer
 ): Extension {
   return ViewPlugin.fromClass(class {
     decorations: DecorationSet;
 
     constructor(view: EditorView) {
-      this.decorations = build(view, enabled(), getSnapshot());
+      this.decorations = build(view, enabled(), getSnapshot(), renderFullLatex);
     }
 
     update(update: ViewUpdate): void {
@@ -28,7 +31,7 @@ export function liveLatexReadingExtension(
         transaction.effects.some((effect) => effect.is(refreshLiveLatexEffect))
       );
       if (refresh || update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = build(update.view, enabled(), getSnapshot());
+        this.decorations = build(update.view, enabled(), getSnapshot(), renderFullLatex);
       }
     }
   }, {
@@ -48,18 +51,70 @@ class MathWidget extends WidgetType {
     return this.source === other.source && this.display === other.display;
   }
 
-  toDOM(): HTMLElement {
-    const container = document.createElement(this.display ? "div" : "span");
+  toDOM(view: EditorView): HTMLElement {
+    const container = view.dom.ownerDocument.createElement(this.display ? "div" : "span");
     container.className = this.display
       ? "latextifier-live-math latextifier-live-math-display"
       : "latextifier-live-math latextifier-live-math-inline";
-    try {
-      container.appendChild(renderMath(this.source, this.display));
-      void finishRenderMath();
-    } catch {
-      container.textContent = this.source;
-      container.classList.add("is-fallback");
-    }
+    appendMath(container, this.source, this.display);
+    return container;
+  }
+}
+
+class TheoremWidget extends WidgetType {
+  constructor(
+    private readonly environment: string,
+    private readonly title: string,
+    private readonly body: string
+  ) {
+    super();
+  }
+
+  eq(other: TheoremWidget): boolean {
+    return this.environment === other.environment
+      && this.title === other.title
+      && this.body === other.body;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const doc = view.dom.ownerDocument;
+    const card = doc.createElement("section");
+    card.className = "latextifier-live-theorem latextifier-live-theorem-" + this.environment;
+
+    const header = doc.createElement("div");
+    header.className = "latextifier-live-theorem-header";
+    header.textContent = humanEnvironment(this.environment) + (this.title ? " — " + this.title : "");
+    card.appendChild(header);
+
+    const body = doc.createElement("div");
+    body.className = "latextifier-live-theorem-body";
+    appendMixedLatex(body, this.body);
+    card.appendChild(body);
+    return card;
+  }
+}
+
+class CompiledBlockWidget extends WidgetType {
+  constructor(
+    private readonly source: string,
+    private readonly renderer: FullLatexRenderer
+  ) {
+    super();
+  }
+
+  eq(other: CompiledBlockWidget): boolean {
+    return this.source === other.source;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const container = view.dom.ownerDocument.createElement("div");
+    container.className = "latextifier-live-compiled-block";
+    container.textContent = "Rendering TeX…";
+    void this.renderer("% latextifier: tex\n" + this.source, container).catch((error: unknown) => {
+      if (!container.isConnected) return;
+      container.textContent = error instanceof Error ? error.message : String(error);
+      container.classList.add("is-error");
+    });
     return container;
   }
 }
@@ -77,8 +132,8 @@ class ReferenceWidget extends WidgetType {
     return this.kind === other.kind && this.key === other.key && this.detail === other.detail;
   }
 
-  toDOM(): HTMLElement {
-    const chip = document.createElement("span");
+  toDOM(view: EditorView): HTMLElement {
+    const chip = view.dom.ownerDocument.createElement("span");
     chip.className = "latextifier-live-reference latextifier-live-reference-" + this.kind;
     chip.textContent = this.kind === "cite" ? "@" + this.key : "↗ " + this.key;
     if (this.detail) chip.title = this.detail;
@@ -95,7 +150,8 @@ interface Candidate {
 function build(
   view: EditorView,
   enabled: boolean,
-  snapshot: ProjectSnapshot | null
+  snapshot: ProjectSnapshot | null,
+  renderFullLatex?: FullLatexRenderer
 ): DecorationSet {
   if (!enabled) return Decoration.none;
   const candidates: Candidate[] = [];
@@ -103,10 +159,12 @@ function build(
   for (const visible of view.visibleRanges) {
     const startLine = view.state.doc.lineAt(visible.from);
     const endLine = view.state.doc.lineAt(visible.to);
-    const from = Math.max(0, view.state.doc.line(Math.max(1, startLine.number - 18)).from);
-    const to = view.state.doc.line(Math.min(view.state.doc.lines, endLine.number + 18)).to;
+    const from = view.state.doc.line(Math.max(1, startLine.number - 24)).from;
+    const to = view.state.doc.line(Math.min(view.state.doc.lines, endLine.number + 24)).to;
     const text = view.state.sliceDoc(from, to);
 
+    collectSemanticBlocks(text, from, candidates);
+    if (renderFullLatex) collectCompiledBlocks(text, from, renderFullLatex, candidates);
     collectDisplayMath(text, from, candidates);
     collectInlineMath(text, from, candidates);
     collectReferences(text, from, snapshot, candidates);
@@ -128,6 +186,45 @@ function build(
     lastTo = candidate.to;
   }
   return builder.finish();
+}
+
+function collectSemanticBlocks(text: string, offset: number, result: Candidate[]): void {
+  const regex = /\\begin\{(theorem|lemma|proposition|corollary|definition|remark|example|proof)\}(?:\[([^\]]+)\])?([\s\S]*?)\\end\{\1\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const from = offset + (match.index ?? 0);
+    const to = from + match[0].length;
+    result.push({
+      from,
+      to,
+      decoration: Decoration.replace({
+        block: true,
+        widget: new TheoremWidget(match[1] ?? "theorem", match[2]?.trim() ?? "", match[3]?.trim() ?? "")
+      })
+    });
+  }
+}
+
+function collectCompiledBlocks(
+  text: string,
+  offset: number,
+  renderer: FullLatexRenderer,
+  result: Candidate[]
+): void {
+  const regex = /\\begin\{(tikzpicture|tabular\*?|tabularx)\}[\s\S]*?\\end\{\1\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const from = offset + (match.index ?? 0);
+    const to = from + match[0].length;
+    result.push({
+      from,
+      to,
+      decoration: Decoration.replace({
+        block: true,
+        widget: new CompiledBlockWidget(match[0], renderer)
+      })
+    });
+  }
 }
 
 function collectDisplayMath(text: string, offset: number, result: Candidate[]): void {
@@ -192,9 +289,7 @@ function collectReferences(
     const key = (match[2] ?? "").split(",")[0]?.trim() ?? "";
     if (!key) continue;
     const cite = /cite/i.test(command);
-    const detail = cite
-      ? citationDetail(snapshot, key)
-      : labelDetail(snapshot, key);
+    const detail = cite ? citationDetail(snapshot, key) : labelDetail(snapshot, key);
     const from = offset + (match.index ?? 0);
     const to = from + match[0].length;
     result.push({
@@ -205,6 +300,53 @@ function collectReferences(
       })
     });
   }
+}
+
+function appendMixedLatex(container: HTMLElement, source: string): void {
+  const regex = /(\$[^$\n]+\$|\\\([\s\S]*?\\\))/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(source)) !== null) {
+    if ((match.index ?? 0) > cursor) {
+      container.appendChild(container.ownerDocument.createTextNode(cleanProse(source.slice(cursor, match.index))));
+    }
+    const raw = match[0];
+    const math = raw.startsWith("$") ? raw.slice(1, -1) : raw.slice(2, -2);
+    const holder = container.ownerDocument.createElement("span");
+    holder.className = "latextifier-live-theorem-math";
+    appendMath(holder, math, false);
+    container.appendChild(holder);
+    cursor = (match.index ?? 0) + raw.length;
+  }
+  if (cursor < source.length) {
+    container.appendChild(container.ownerDocument.createTextNode(cleanProse(source.slice(cursor))));
+  }
+}
+
+function appendMath(container: HTMLElement, source: string, display: boolean): void {
+  try {
+    container.appendChild(renderMath(source, display));
+    void finishRenderMath();
+  } catch {
+    container.textContent = source;
+    container.classList.add("is-fallback");
+  }
+}
+
+function cleanProse(value: string): string {
+  return value
+    .replace(/%.*$/gm, "")
+    .replace(/\\(?:textbf|textit|emph)\{([^{}]*)\}/g, "$1")
+    .replace(/\\(?:ref|eqref|autoref|cref|Cref)\{([^}]+)\}/g, "[$1]")
+    .replace(/\\(?:cite|parencite|textcite)\{([^}]+)\}/g, "[@$1]")
+    .replace(/\\\\/g, "\n")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+}
+
+function humanEnvironment(value: string): string {
+  if (value === "proof") return "Proof";
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function citationDetail(snapshot: ProjectSnapshot | null, key: string): string {
