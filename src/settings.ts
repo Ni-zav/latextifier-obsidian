@@ -24,7 +24,7 @@ export class LatextifierSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Latextifier" });
+    new Setting(containerEl).setName("Latextifier").setHeading();
 
     new Setting(containerEl)
       .setName("Compile while typing")
@@ -41,7 +41,6 @@ export class LatextifierSettingTab extends PluginSettingTab {
       .setDesc("Delay after the latest edit before saving and compiling.")
       .addSlider((slider) => slider
         .setLimits(100, 2000, 50)
-        .setDynamicTooltip()
         .setValue(this.plugin.settings.compileDebounceMs)
         .onChange(async (value) => {
           this.plugin.settings.compileDebounceMs = value;
