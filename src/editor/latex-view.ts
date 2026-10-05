@@ -135,7 +135,9 @@ export class LatexEditorView extends TextFileView {
           liveLatexReadingExtension(
             () => this.liveLatex,
             () => this.session?.index.current ?? null,
-            (source, container) => this.plugin.renderLatexBlock(source, container)
+            (source, container) => this.session
+              ? this.plugin.renderProjectLatexBlock(source, container, this.session)
+              : this.plugin.renderLatexBlock(source, container)
           ),
           smartEditingExtension(() => this.plugin.settings),
           autocompletion({
