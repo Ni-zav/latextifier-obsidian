@@ -353,3 +353,39 @@ async function readUtf8(file: string): Promise<string | null> {
     return null;
   }
 }
+
+
+export interface ProjectSearchHit extends ProjectLocation {
+  text: string;
+}
+
+export async function searchProjectText(
+  snapshot: ProjectSnapshot,
+  query: string,
+  limit = 200
+): Promise<ProjectSearchHit[]> {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return [];
+  const results: ProjectSearchHit[] = [];
+  const files = [...snapshot.files, ...snapshot.bibFiles];
+
+  for (const file of files) {
+    const text = await readUtf8(file);
+    if (text === null) continue;
+    const lines = text.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index] ?? "";
+      const column = line.toLocaleLowerCase().indexOf(needle);
+      if (column < 0) continue;
+      results.push({
+        file,
+        line: index + 1,
+        column,
+        text: line.trim().slice(0, 240)
+      });
+      if (results.length >= limit) return results;
+    }
+  }
+
+  return results;
+}
