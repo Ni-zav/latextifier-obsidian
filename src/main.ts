@@ -122,6 +122,12 @@ export default class LatextifierPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-symbol-palette",
+      name: "Open LaTeX symbol palette",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.showSymbolPalette())
+    });
+
+    this.addCommand({
       id: "insert-latex-block",
       name: "Insert LaTeX block",
       editorCallback: (editor) => {
