@@ -26,6 +26,7 @@ import { latexHighlightExtension } from "./highlight";
 import { ProjectNavigator } from "./project-navigator";
 import { smartEditingExtension } from "./smart-editing";
 import { liveLatexReadingExtension, refreshLiveLatexEffect } from "./live-latex";
+import { ReferenceGraphModal } from "./reference-graph-modal";
 
 export const LATEX_VIEW_TYPE = "latextifier-tex-editor";
 
@@ -85,6 +86,7 @@ export class LatexEditorView extends TextFileView {
     this.scrollLockButton = this.addToolbarButton(actions, "link", "Toggle continuous source and PDF sync", () => this.toggleContinuousSync());
     this.navigatorButton = this.addToolbarButton(actions, "panel-left", "Toggle project navigator", () => this.toggleNavigator());
     this.liveLatexButton = this.addToolbarButton(actions, "eye", "Toggle live LaTeX reading", () => this.toggleLiveLatex());
+    this.addToolbarButton(actions, "git-fork", "Open reference graph", () => this.showReferenceGraph());
     this.addToolbarButton(actions, "book-open", "TexLab hover information", () => void this.showTexlabHover());
     this.addToolbarButton(actions, "panel-right", "Toggle PDF", () => this.togglePreview());
     this.addToolbarButton(actions, "zoom-out", "Zoom out", () => this.renderer?.zoomOut());
@@ -278,6 +280,17 @@ export class LatexEditorView extends TextFileView {
     this.liveLatex = !this.liveLatex;
     this.editor?.dispatch({ effects: refreshLiveLatexEffect.of(undefined) });
     this.updateToggleButtons();
+  }
+
+  showReferenceGraph(): void {
+    const snapshot = this.session?.index.current;
+    if (!snapshot || snapshot.references.length === 0) {
+      new Notice("No project reference graph is available yet.");
+      return;
+    }
+    new ReferenceGraphModal(this.plugin.app, snapshot, {
+      onOpen: (location) => void this.openProjectLocation(location, true)
+    }).open();
   }
 
   focusLocation(line: number, column = 0, focus = true): void {
