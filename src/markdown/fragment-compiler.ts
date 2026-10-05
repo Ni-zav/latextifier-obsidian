@@ -124,20 +124,20 @@ export function wrapFragment(source: string, extraPreamble: string): string {
   if (/\\documentclass\b/.test(source)) return source;
 
   const auto: string[] = [
-    "\\\\usepackage{amsmath,amssymb}",
-    "\\\\usepackage{xcolor}"
+    "\\usepackage{amsmath,amssymb}",
+    "\\usepackage{xcolor}"
   ];
-  if (/\\begin\{tikzpicture\}|\\tikz\b/.test(source)) auto.push("\\\\usepackage{tikz}");
-  if (/\\(?:toprule|midrule|bottomrule)\b/.test(source)) auto.push("\\\\usepackage{booktabs}");
-  if (/\\includegraphics\b/.test(source)) auto.push("\\\\usepackage{graphicx}");
+  if (/\\begin\{tikzpicture\}|\\tikz\b/.test(source)) auto.push("\\usepackage{tikz}");
+  if (/\\(?:toprule|midrule|bottomrule)\b/.test(source)) auto.push("\\usepackage{booktabs}");
+  if (/\\includegraphics\b/.test(source)) auto.push("\\usepackage{graphicx}");
 
   return [
-    "\\\\documentclass[preview,border=2pt]{standalone}",
+    "\\documentclass[preview,border=2pt]{standalone}",
     ...auto,
     extraPreamble.trim(),
-    "\\\\begin{document}",
+    "\\begin{document}",
     source,
-    "\\\\end{document}",
+    "\\end{document}",
     ""
   ].filter(Boolean).join("\n");
 }
