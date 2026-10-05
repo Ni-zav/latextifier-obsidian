@@ -116,6 +116,12 @@ export default class LatextifierPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-reference-graph",
+      name: "Open LaTeX reference graph",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.showReferenceGraph())
+    });
+
+    this.addCommand({
       id: "insert-latex-block",
       name: "Insert LaTeX block",
       editorCallback: (editor) => {
