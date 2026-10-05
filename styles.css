@@ -493,3 +493,66 @@
 .latextifier-live-compiled-block.is-error {
   color: var(--text-error);
 }
+
+
+.latextifier-graph-modal {
+  width: min(96vw, 1080px);
+}
+
+.latextifier-graph-modal .modal-content {
+  min-height: min(72vh, 720px);
+}
+
+.latextifier-graph-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.latextifier-graph-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.latextifier-graph-canvas {
+  min-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.latextifier-graph-canvas svg {
+  display: block;
+  min-width: 100%;
+}
+
+.latextifier-graph-edge {
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+}
+
+.latextifier-graph-node rect {
+  fill: var(--background-primary);
+  stroke: var(--background-modifier-border-hover);
+  stroke-width: 1.5;
+}
+
+.latextifier-graph-node text {
+  fill: var(--text-normal);
+  font-size: 12px;
+}
+
+.latextifier-graph-node.is-focus rect {
+  stroke: var(--interactive-accent);
+  stroke-width: 2.5;
+}
+
+.latextifier-graph-node.is-clickable {
+  cursor: pointer;
+}
+
+.latextifier-graph-node.is-clickable:hover rect {
+  fill: var(--background-modifier-hover);
+}
