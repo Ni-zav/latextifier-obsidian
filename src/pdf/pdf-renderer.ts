@@ -21,6 +21,57 @@ export interface PdfRendererCallbacks {
   onStatus?: (page: number, pages: number, scale: number) => void;
 }
 
+interface PdfViewport {
+  width: number;
+  height: number;
+}
+
+interface RenderTask {
+  promise: Promise<void>;
+  cancel(): void;
+}
+
+interface PdfPage {
+  getViewport(options: { scale: number }): PdfViewport;
+  getTextContent?(): Promise<unknown>;
+  render(options: {
+    canvasContext: CanvasRenderingContext2D;
+    canvas: HTMLCanvasElement;
+    viewport: PdfViewport;
+  }): RenderTask;
+}
+
+interface PdfDocument {
+  numPages: number;
+  getPage(page: number): Promise<PdfPage>;
+  destroy(): Promise<void>;
+}
+
+interface PdfLoadingTask {
+  promise: Promise<PdfDocument>;
+}
+
+interface TextLayerTask {
+  render(): Promise<void>;
+}
+
+interface PdfJs {
+  TextLayer?: new (options: {
+    textContentSource: unknown;
+    container: HTMLElement;
+    viewport: PdfViewport;
+  }) => TextLayerTask;
+  getDocument(options: {
+    data: Uint8Array;
+    isEvalSupported: boolean;
+    cMapUrl: string;
+    cMapPacked: boolean;
+    standardFontDataUrl: string;
+    wasmUrl: string;
+    iccUrl: string;
+  }): PdfLoadingTask;
+}
+
 interface PageSize {
   width: number;
   height: number;
@@ -38,9 +89,9 @@ export class PdfRenderer {
   private readonly pageSizes = new Map<number, PageSize>();
   private readonly visiblePages = new Set<number>();
   private readonly rendered = new Set<number>();
-  private readonly renderTasks = new Map<number, { cancel?: () => void }>();
-  private doc: any | null = null;
-  private pdfjs: any | null = null;
+  private readonly renderTasks = new Map<number, RenderTask>();
+  private doc: PdfDocument | null = null;
+  private pdfjs: PdfJs | null = null;
   private generation = 0;
   private scale = 1;
   private totalPages = 0;
@@ -86,7 +137,7 @@ export class PdfRenderer {
     await this.destroyDocument();
     this.resetPages();
 
-    const pdfjs = await loadPdfJs();
+    const pdfjs = (await loadPdfJs()) as PdfJs;
     if (generation !== this.generation) return;
     this.pdfjs = pdfjs;
 
@@ -107,18 +158,19 @@ export class PdfRenderer {
 
     const first = await doc.getPage(1);
     const firstViewport = first.getViewport({ scale: 1 });
-    this.pageSizes.set(1, { width: firstViewport.width, height: firstViewport.height });
+    const firstSize: PageSize = { width: firstViewport.width, height: firstViewport.height };
+    this.pageSizes.set(1, firstSize);
 
     for (let page = 1; page <= this.totalPages; page += 1) {
       const shell = this.pagesEl.createDiv({ cls: "latextifier-pdf-page" });
       shell.dataset.page = String(page);
       shell.setAttribute("aria-label", "PDF page " + String(page));
-      this.applyShellSize(shell, this.pageSizes.get(page) ?? this.pageSizes.get(1)!);
+      this.applyShellSize(shell, this.pageSizes.get(page) ?? firstSize);
       this.observer.observe(shell);
     }
 
     await this.renderPage(Math.min(anchor.page, this.totalPages));
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       this.restoreAnchor({
         page: Math.min(anchor.page, this.totalPages),
         offset: anchor.offset
@@ -139,7 +191,7 @@ export class PdfRenderer {
   destroy(): void {
     this.generation += 1;
     this.observer.disconnect();
-    for (const task of this.renderTasks.values()) task.cancel?.();
+    for (const task of this.renderTasks.values()) task.cancel();
     this.renderTasks.clear();
     void this.destroyDocument();
     this.host.empty();
@@ -201,16 +253,17 @@ export class PdfRenderer {
   }
 
   private async renderPage(pageNumber: number): Promise<void> {
-    if (!this.doc || this.rendered.has(pageNumber) || this.renderTasks.has(pageNumber)) return;
+    const doc = this.doc;
+    if (!doc || this.rendered.has(pageNumber) || this.renderTasks.has(pageNumber)) return;
     const shell = this.shell(pageNumber);
     if (!shell) return;
 
     const generation = this.generation;
-    const page = await this.doc.getPage(pageNumber);
+    const page = await doc.getPage(pageNumber);
     if (generation !== this.generation) return;
 
     const baseViewport = page.getViewport({ scale: 1 });
-    const size = { width: baseViewport.width, height: baseViewport.height };
+    const size: PageSize = { width: baseViewport.width, height: baseViewport.height };
     this.pageSizes.set(pageNumber, size);
     this.applyShellSize(shell, size);
 
@@ -243,13 +296,21 @@ export class PdfRenderer {
     }
   }
 
-  private async renderTextLayer(page: any, shell: HTMLElement, viewport: any, generation: number): Promise<void> {
-    if (!this.pdfjs?.TextLayer || typeof page.getTextContent !== "function") return;
+  private async renderTextLayer(
+    page: PdfPage,
+    shell: HTMLElement,
+    viewport: PdfViewport,
+    generation: number
+  ): Promise<void> {
+    const TextLayer = this.pdfjs?.TextLayer;
+    const getTextContent = page.getTextContent;
+    if (!TextLayer || !getTextContent) return;
+
     try {
-      const source = await page.getTextContent();
+      const source = await getTextContent.call(page);
       if (generation !== this.generation) return;
       const layer = shell.createDiv({ cls: "textLayer latextifier-text-layer" });
-      const task = new this.pdfjs.TextLayer({
+      const task = new TextLayer({
         textContentSource: source,
         container: layer,
         viewport
@@ -288,7 +349,7 @@ export class PdfRenderer {
       this.unrender(page);
     }
 
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       this.restoreAnchor(anchor);
       for (const page of this.visiblePages) void this.renderPage(page);
       if (this.visiblePages.size === 0 && anchor.page > 0) void this.renderPage(anchor.page);
@@ -309,11 +370,10 @@ export class PdfRenderer {
   }
 
   private unrender(page: number): void {
-    this.renderTasks.get(page)?.cancel?.();
+    this.renderTasks.get(page)?.cancel();
     this.renderTasks.delete(page);
     if (!this.rendered.delete(page)) return;
-    const shell = this.shell(page);
-    shell?.empty();
+    this.shell(page)?.empty();
   }
 
   private applyShellSize(shell: HTMLElement, size: PageSize): void {
@@ -338,7 +398,7 @@ export class PdfRenderer {
 
   private resetPages(): void {
     this.observer.disconnect();
-    for (const task of this.renderTasks.values()) task.cancel?.();
+    for (const task of this.renderTasks.values()) task.cancel();
     this.renderTasks.clear();
     this.visiblePages.clear();
     this.rendered.clear();
@@ -350,12 +410,11 @@ export class PdfRenderer {
   private async destroyDocument(): Promise<void> {
     const doc = this.doc;
     this.doc = null;
-    if (doc) {
-      try {
-        await doc.destroy();
-      } catch {
-        // Destruction races are harmless during reload/unload.
-      }
+    if (!doc) return;
+    try {
+      await doc.destroy();
+    } catch {
+      // Destruction races are harmless during reload/unload.
     }
   }
 
