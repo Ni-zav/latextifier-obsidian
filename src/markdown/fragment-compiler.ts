@@ -77,13 +77,13 @@ export class FragmentCompiler {
       "-output-directory=" + directory
     ];
     if (settings.allowShellEscape) args.push("-shell-escape");
-    args.push("source.tex");
+    args.push(options.contextDir ? texPath : "source.tex");
 
     let run = await runProcess(
       toolPath(settings.texBinDir, settings.fragmentEngine),
       args,
       {
-        cwd: directory,
+        cwd: options.contextDir ?? directory,
         env: fragmentEnvironment(settings.texBinDir, options.contextDir),
         timeoutMs: 45000
       }
