@@ -448,3 +448,48 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+
+.latextifier-live-theorem {
+  margin: 8px 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary-alt);
+}
+
+.latextifier-live-theorem-proof {
+  border-left-color: var(--text-muted);
+}
+
+.latextifier-live-theorem-header {
+  margin-bottom: 6px;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.latextifier-live-theorem-body {
+  color: var(--text-normal);
+  line-height: var(--line-height-normal);
+  white-space: pre-wrap;
+}
+
+.latextifier-live-theorem-math {
+  display: inline-flex;
+  padding-inline: 2px;
+}
+
+.latextifier-live-compiled-block {
+  min-height: 38px;
+  margin: 8px 2px;
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+}
+
+.latextifier-live-compiled-block.is-error {
+  color: var(--text-error);
+}
