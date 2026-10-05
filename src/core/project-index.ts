@@ -101,6 +101,7 @@ const BIB_FIELD_RE = /^\s*([A-Za-z]+)\s*=\s*(?:\{([^}]*)\}|"([^"]*)"|([^,\n]+))\
 export class ProjectIndex {
   private snapshot: ProjectSnapshot = EMPTY_SNAPSHOT;
   private generation = 0;
+  private readonly fileCache = new Map<string, { mtimeMs: number; size: number; text: string }>();
 
   constructor(readonly root: string) {}
 
@@ -110,7 +111,7 @@ export class ProjectIndex {
 
   async refresh(): Promise<ProjectSnapshot> {
     const generation = ++this.generation;
-    const builder = new IndexBuilder(this.root);
+    const builder = new IndexBuilder(this.root, (file) => this.readCached(file));
     const next = await builder.build();
     if (generation === this.generation) this.snapshot = next;
     return this.snapshot;
@@ -118,6 +119,21 @@ export class ProjectIndex {
 
   invalidate(): void {
     this.generation += 1;
+    this.fileCache.clear();
+  }
+
+  private async readCached(file: string): Promise<string | null> {
+    try {
+      const stat = await fs.stat(file);
+      const cached = this.fileCache.get(file);
+      if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.text;
+      const text = await fs.readFile(file, "utf8");
+      this.fileCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, text });
+      return text;
+    } catch {
+      this.fileCache.delete(file);
+      return null;
+    }
   }
 }
 
@@ -132,7 +148,10 @@ class IndexBuilder {
   private readonly outline: ProjectOutlineItem[] = [];
   private readonly todos: ProjectTodo[] = [];
 
-  constructor(private readonly root: string) {}
+  constructor(
+    private readonly root: string,
+    private readonly readFile: (file: string) => Promise<string | null>
+  ) {}
 
   async build(): Promise<ProjectSnapshot> {
     await this.visitTex(resolve(this.root), 0);
@@ -157,7 +176,7 @@ class IndexBuilder {
     const file = normalizeTexPath(path);
     if (this.files.has(file) || depth > 96 || this.files.size >= 768) return;
 
-    const text = await readUtf8(file);
+    const text = await this.readFile(file);
     if (text === null) return;
     this.files.add(file);
     this.parseTex(file, text);
@@ -241,7 +260,7 @@ class IndexBuilder {
   }
 
   private async visitBib(file: string): Promise<void> {
-    const text = await readUtf8(file);
+    const text = await this.readFile(file);
     if (text === null) return;
     this.bibFiles.add(file);
 
@@ -370,7 +389,7 @@ export async function searchProjectText(
   const files = [...snapshot.files, ...snapshot.bibFiles];
 
   for (const file of files) {
-    const text = await readUtf8(file);
+    const text = await this.readFile(file);
     if (text === null) continue;
     const lines = text.split(/\r?\n/);
     for (let index = 0; index < lines.length; index += 1) {
