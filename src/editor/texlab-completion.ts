@@ -1,7 +1,8 @@
 import type {
   CompletionContext,
   CompletionResult,
-  CompletionSource
+  CompletionSource,
+  snippet
 } from "@codemirror/autocomplete";
 import type { TexlabClient } from "../core/texlab";
 
@@ -25,7 +26,9 @@ export function createTexlabCompletionSource(
         from: token?.from ?? context.pos,
         options: items.map((item) => ({
           label: item.label,
-          apply: item.insertText ?? item.label,
+          apply: item.insertTextFormat === 2
+            ? snippet(normalizeLspSnippet(item.insertText ?? item.label))
+            : item.insertText ?? item.label,
           detail: item.detail,
           type: "function",
           boost: item.sortText ? 1 : undefined
@@ -49,4 +52,11 @@ function completionToken(context: CompletionContext): { from: number } | null {
   }
 
   return null;
+}
+
+
+function normalizeLspSnippet(value: string): string {
+  return value
+    .replace(/\\$\\{(\\d+):([^}]*)\\}/g, (_match, index: string, placeholder: string) => "\${" + index + ":" + placeholder + "}")
+    .replace(/\\$(\\d+)/g, (_match, index: string) => "\${" + index + "}");
 }
