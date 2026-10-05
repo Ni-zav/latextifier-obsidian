@@ -78,7 +78,7 @@ Open a `.tex` file for:
 ## Build
 
 ```bash
-npm ci
+npm install --ignore-scripts
 npm run ci
 ```
 
