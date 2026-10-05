@@ -303,11 +303,10 @@ export class PdfRenderer {
     generation: number
   ): Promise<void> {
     const TextLayer = this.pdfjs?.TextLayer;
-    const getTextContent = page.getTextContent;
-    if (!TextLayer || !getTextContent) return;
+    if (!TextLayer || !page.getTextContent) return;
 
     try {
-      const source = await getTextContent.call(page);
+      const source = await page.getTextContent();
       if (generation !== this.generation) return;
       const layer = shell.createDiv({ cls: "textLayer latextifier-text-layer" });
       const task = new TextLayer({
