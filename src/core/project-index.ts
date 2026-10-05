@@ -55,6 +55,7 @@ export interface ProjectReference extends ProjectLocation {
 
 export interface ProjectSnapshot {
   root: string;
+  preamble: string;
   files: string[];
   bibFiles: string[];
   packages: string[];
@@ -70,6 +71,7 @@ export interface ProjectSnapshot {
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {
   root: "",
+  preamble: "",
   files: [],
   bibFiles: [],
   packages: [],
@@ -147,6 +149,7 @@ export class ProjectIndex {
 
 class IndexBuilder {
   private readonly files = new Set<string>();
+  private preamble = "";
   private readonly bibFiles = new Set<string>();
   private readonly packages = new Set<string>();
   private readonly labels = new Map<string, ProjectLabel>();
@@ -168,6 +171,7 @@ class IndexBuilder {
 
     return {
       root: resolve(this.root),
+      preamble: this.preamble,
       files: [...this.files].sort(),
       bibFiles: [...this.bibFiles].sort(),
       packages: [...this.packages].sort((a, b) => a.localeCompare(b)),
@@ -189,6 +193,7 @@ class IndexBuilder {
     const text = await this.readFile(file);
     if (text === null) return;
     this.files.add(file);
+    if (file === resolve(this.root)) this.preamble = extractPreamble(text);
     this.parseTex(file, text);
 
     const directory = dirname(file);
@@ -444,4 +449,13 @@ export async function searchProjectText(
   }
 
   return results;
+}
+
+
+function extractPreamble(text: string): string {
+  const begin = text.search(/\\begin\{document\}/);
+  const beforeDocument = begin >= 0 ? text.slice(0, begin) : text;
+  return beforeDocument
+    .replace(/^[\s\S]*?\\documentclass(?:\[[^\]]*\])?\{[^}]+\}\s*/m, "")
+    .trim();
 }
