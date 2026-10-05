@@ -142,6 +142,39 @@ export function wrapFragment(source: string, extraPreamble: string): string {
   ].filter(Boolean).join("\n");
 }
 
+export function wrapFragmentFallback(source: string, extraPreamble: string): string {
+  if (/\\documentclass\b/.test(source)) return source;
+  const auto: string[] = [
+    "\\usepackage{amsmath,amssymb}",
+    "\\usepackage{xcolor}"
+  ];
+  if (/\\begin\{tikzpicture\}|\\tikz\b/.test(source)) auto.push("\\usepackage{tikz}");
+  if (/\\(?:toprule|midrule|bottomrule)\b/.test(source)) auto.push("\\usepackage{booktabs}");
+  if (/\\includegraphics\b/.test(source)) auto.push("\\usepackage{graphicx}");
+
+  return [
+    "\\documentclass{article}",
+    "\\pagestyle{empty}",
+    "\\setlength{\\parindent}{0pt}",
+    ...auto,
+    extraPreamble.trim(),
+    "\\begin{document}",
+    source,
+    "\\end{document}",
+    ""
+  ].filter(Boolean).join("\n");
+}
+
+async function fragmentLog(stdout: string, stderr: string, logPath: string): Promise<string> {
+  let value = stdout + "\n" + stderr;
+  try {
+    value += "\n" + await fs.readFile(logPath, "utf8");
+  } catch {
+    // stdout/stderr still provide a useful error.
+  }
+  return value;
+}
+
 export function sanitizeSvg(svg: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svg, "image/svg+xml");
