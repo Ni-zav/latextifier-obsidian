@@ -24,7 +24,7 @@ export class LatextifierSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName("Latextifier").setHeading();
+    new Setting(containerEl).setName("Rendering").setHeading();
 
     new Setting(containerEl)
       .setName("Compile while typing")
