@@ -64,7 +64,7 @@ export class FragmentCompiler {
     if (settings.allowShellEscape) args.push("-shell-escape");
     args.push("source.tex");
 
-    const run = await runProcess(
+    let run = await runProcess(
       toolPath(settings.texBinDir, settings.fragmentEngine),
       args,
       {
@@ -74,12 +74,25 @@ export class FragmentCompiler {
       }
     );
 
-    let rawLog = run.stdout + "\n" + run.stderr;
-    try {
-      rawLog += "\n" + await fs.readFile(logPath, "utf8");
-    } catch {
-      // stdout/stderr still provide a useful error.
+    let rawLog = await fragmentLog(run.stdout, run.stderr, logPath);
+    if (
+      run.code !== 0
+      && !/\\documentclass\b/.test(source)
+      && /standalone\.cls[\s\S]*(?:not found|cannot find)|File .*standalone\.cls.*not found/i.test(rawLog)
+    ) {
+      await fs.writeFile(texPath, wrapFragmentFallback(source, settings.fragmentPreamble), "utf8");
+      run = await runProcess(
+        toolPath(settings.texBinDir, settings.fragmentEngine),
+        args,
+        {
+          cwd: directory,
+          env: texEnvironment(settings.texBinDir),
+          timeoutMs: 45000
+        }
+      );
+      rawLog = await fragmentLog(run.stdout, run.stderr, logPath);
     }
+
     const diagnostics = parseLatexLog(rawLog, directory);
     if (run.code !== 0) {
       const message = diagnostics.find((item) => item.severity === "error")?.message
