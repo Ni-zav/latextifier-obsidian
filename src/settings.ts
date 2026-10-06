@@ -195,6 +195,10 @@ export class LatextifierSettingTab extends PluginSettingTab {
     settings[key] = value;
     await this.latextifier.saveSettings();
 
+    if (key === "enableTexlab" || key === "texlabPath" || key === "texBinDir") {
+      this.latextifier.onLanguageSettingsChanged();
+    }
+
     if (
       key === "fragmentEngine"
       || key === "texBinDir"
