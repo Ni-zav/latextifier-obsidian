@@ -89,6 +89,7 @@ export class LatexEditorView extends TextFileView {
     this.liveLatexButton = this.addToolbarButton(actions, "eye", "Toggle live LaTeX reading", () => this.toggleLiveLatex());
     this.addToolbarButton(actions, "git-fork", "Open reference graph", () => this.showReferenceGraph());
     this.addToolbarButton(actions, "keyboard", "Open LaTeX symbol palette", () => this.showSymbolPalette());
+    this.addToolbarButton(actions, "file-output", "Export portable project HTML", () => void this.exportPortableHtml());
     this.addToolbarButton(actions, "book-open", "TexLab hover information", () => void this.showTexlabHover());
     this.addToolbarButton(actions, "panel-right", "Toggle PDF", () => this.togglePreview());
     this.addToolbarButton(actions, "zoom-out", "Zoom out", () => this.renderer?.zoomOut());
@@ -291,6 +292,20 @@ export class LatexEditorView extends TextFileView {
 
   showSymbolPalette(): void {
     new SymbolPaletteModal(this.plugin.app, (latex) => this.insertLatex(latex)).open();
+  }
+
+  async exportPortableHtml(): Promise<void> {
+    if (!this.session) {
+      new Notice("No TeX project session is attached.");
+      return;
+    }
+    await this.flushSave();
+    try {
+      const path = await this.plugin.exportSessionHtml(this.session);
+      new Notice("Portable project exported: " + path, 7000);
+    } catch (error) {
+      new Notice("Portable project export failed: " + String(error), 7000);
+    }
   }
 
   showReferenceGraph(): void {
