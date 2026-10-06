@@ -81,13 +81,13 @@ export async function runProcess(
       finishReject(new Error("Process aborted."));
     };
 
-    const timeout = globalThis.setTimeout(() => {
+    const timeout = setTimeout(() => {
       child.kill();
       finishReject(new Error("Process timed out after " + String(options.timeoutMs ?? 60000) + " ms."));
     }, options.timeoutMs ?? 60000);
 
     const cleanup = () => {
-      globalThis.clearTimeout(timeout);
+      clearTimeout(timeout);
       options.signal?.removeEventListener("abort", onAbort);
     };
 
