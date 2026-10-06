@@ -161,6 +161,10 @@ export default class LatextifierPlugin extends Plugin {
     this.fragmentCompiler.clear();
   }
 
+  onLanguageSettingsChanged(): void {
+    this.sessions.resetTexlab();
+  }
+
   async renderLatexBlock(source: string, container: HTMLElement): Promise<void> {
     await this.markdownRenderer.render(source, container);
   }
