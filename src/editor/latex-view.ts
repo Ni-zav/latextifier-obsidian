@@ -1,5 +1,5 @@
-import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { EditorState, Transaction } from "@codemirror/state";
 import {
   crosshairCursor,
@@ -125,6 +125,7 @@ export class LatexEditorView extends TextFileView {
           highlightActiveLineGutter(),
           highlightSpecialChars(),
           history(),
+          closeBrackets(),
           drawSelection(),
           dropCursor(),
           rectangularSelection(),
@@ -146,6 +147,8 @@ export class LatexEditorView extends TextFileView {
             maxRenderedOptions: 100
           }),
           keymap.of([
+            indentWithTab,
+            ...closeBracketsKeymap,
             ...defaultKeymap,
             ...historyKeymap,
             ...searchKeymap,
