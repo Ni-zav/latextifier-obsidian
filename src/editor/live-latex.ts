@@ -52,7 +52,7 @@ class MathWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const container = view.dom.ownerDocument.win.createEl(this.display ? "div" : "span");
+    const container = view.dom.ownerDocument.createElement(this.display ? "div" : "span");
     container.className = this.display
       ? "latextifier-live-math latextifier-live-math-display"
       : "latextifier-live-math latextifier-live-math-inline";
@@ -78,15 +78,15 @@ class TheoremWidget extends WidgetType {
 
   toDOM(view: EditorView): HTMLElement {
     const doc = view.dom.ownerDocument;
-    const card = doc.win.createEl("section");
+    const card = doc.createElement("section");
     card.className = "latextifier-live-theorem latextifier-live-theorem-" + this.environment;
 
-    const header = doc.win.createDiv();
+    const header = doc.createElement("div");
     header.className = "latextifier-live-theorem-header";
     header.textContent = humanEnvironment(this.environment) + (this.title ? " — " + this.title : "");
     card.appendChild(header);
 
-    const body = doc.win.createDiv();
+    const body = doc.createElement("div");
     body.className = "latextifier-live-theorem-body";
     appendMixedLatex(body, this.body);
     card.appendChild(body);
@@ -107,7 +107,7 @@ class CompiledBlockWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const container = view.dom.ownerDocument.win.createDiv();
+    const container = view.dom.ownerDocument.createElement("div");
     container.className = "latextifier-live-compiled-block";
     container.textContent = "Rendering…";
     void this.renderer("% latextifier: tex\n" + this.source, container).catch((error: unknown) => {
@@ -133,7 +133,7 @@ class ReferenceWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const chip = view.dom.ownerDocument.win.createSpan();
+    const chip = view.dom.ownerDocument.createElement("span");
     chip.className = "latextifier-live-reference latextifier-live-reference-" + this.kind;
     chip.textContent = this.kind === "cite" ? "@" + this.key : "↗ " + this.key;
     if (this.detail) chip.title = this.detail;
@@ -312,7 +312,7 @@ function appendMixedLatex(container: HTMLElement, source: string): void {
     }
     const raw = match[0];
     const math = raw.startsWith("$") ? raw.slice(1, -1) : raw.slice(2, -2);
-    const holder = container.ownerDocument.win.createSpan();
+    const holder = container.ownerDocument.createElement("span");
     holder.className = "latextifier-live-theorem-math";
     appendMath(holder, math, false);
     container.appendChild(holder);
