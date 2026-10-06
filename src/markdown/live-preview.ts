@@ -37,7 +37,7 @@ class LatexBlockWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const container = document.createElement("div");
+    const container = view.dom.ownerDocument.win.createDiv();
     container.className = "latextifier-live-block";
     container.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
