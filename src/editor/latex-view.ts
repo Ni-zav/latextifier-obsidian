@@ -1,5 +1,5 @@
-import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { EditorState, Transaction } from "@codemirror/state";
 import {
   crosshairCursor,
@@ -16,12 +16,18 @@ import {
 import { searchKeymap } from "@codemirror/search";
 import { Notice, TextFileView, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import type LatextifierPlugin from "../main";
-import type { BuildMode, Diagnostic } from "../types";
+import type { BuildMode, Diagnostic, SourceLocation } from "../types";
 import type { LatexSession, SessionEvent } from "../core/session";
 import type { PdfPoint } from "../pdf/pdf-renderer";
 import { PdfRenderer } from "../pdf/pdf-renderer";
-import { latexCompletionSource } from "./completion";
+import { createLatexCompletionSource } from "./completion";
+import { createTexlabCompletionSource } from "./texlab-completion";
 import { latexHighlightExtension } from "./highlight";
+import { ProjectNavigator } from "./project-navigator";
+import { smartEditingExtension } from "./smart-editing";
+import { liveLatexReadingExtension, refreshLiveLatexEffect } from "./live-latex";
+import { ReferenceGraphModal } from "./reference-graph-modal";
+import { SymbolPaletteModal } from "./symbol-palette";
 
 export const LATEX_VIEW_TYPE = "latextifier-tex-editor";
 
@@ -29,15 +35,26 @@ export class LatexEditorView extends TextFileView {
   private editor: EditorView | null = null;
   private loadedText = "";
   private saveTimer: number | null = null;
+  private texlabChangeTimer: number | null = null;
+  private sourceSyncTimer: number | null = null;
   private applyingExternalData = false;
   private session: LatexSession | null = null;
   private sessionRoot: string | null = null;
   private detachSession: (() => void) | null = null;
   private renderer: PdfRenderer | null = null;
+  private navigator: ProjectNavigator | null = null;
   private statusEl: HTMLElement | null = null;
   private problemsEl: HTMLDetailsElement | null = null;
   private previewPane: HTMLElement | null = null;
+  private navigatorPane: HTMLElement | null = null;
   private previewVisible = true;
+  private navigatorVisible = true;
+  private continuousSync = true;
+  private liveLatex = true;
+  private syncGuardUntil = 0;
+  private scrollLockButton: HTMLButtonElement | null = null;
+  private navigatorButton: HTMLButtonElement | null = null;
+  private liveLatexButton: HTMLButtonElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, readonly plugin: LatextifierPlugin) {
     super(leaf);
@@ -67,6 +84,13 @@ export class LatexEditorView extends TextFileView {
     this.addToolbarButton(actions, "play", "Compile", () => void this.compile("fast"));
     this.addToolbarButton(actions, "hammer", "Full build", () => void this.compile("full"));
     this.addToolbarButton(actions, "locate-fixed", "Forward SyncTeX", () => void this.forwardSearch());
+    this.scrollLockButton = this.addToolbarButton(actions, "link", "Toggle continuous source and PDF sync", () => this.toggleContinuousSync());
+    this.navigatorButton = this.addToolbarButton(actions, "panel-left", "Toggle project navigator", () => this.toggleNavigator());
+    this.liveLatexButton = this.addToolbarButton(actions, "eye", "Toggle live LaTeX reading", () => this.toggleLiveLatex());
+    this.addToolbarButton(actions, "git-fork", "Open reference graph", () => this.showReferenceGraph());
+    this.addToolbarButton(actions, "keyboard", "Open LaTeX symbol palette", () => this.showSymbolPalette());
+    this.addToolbarButton(actions, "file-output", "Export portable project HTML", () => void this.exportPortableHtml());
+    this.addToolbarButton(actions, "book-open", "TexLab hover information", () => void this.showTexlabHover());
     this.addToolbarButton(actions, "panel-right", "Toggle PDF", () => this.togglePreview());
     this.addToolbarButton(actions, "zoom-out", "Zoom out", () => this.renderer?.zoomOut());
     this.addToolbarButton(actions, "zoom-in", "Zoom in", () => this.renderer?.zoomIn());
@@ -76,8 +100,22 @@ export class LatexEditorView extends TextFileView {
     this.renderProblems([]);
 
     const work = shell.createDiv({ cls: "latextifier-workspace" });
+    this.navigatorPane = work.createDiv({ cls: "latextifier-navigator-pane" });
     const editorPane = work.createDiv({ cls: "latextifier-editor-pane" });
     this.previewPane = work.createDiv({ cls: "latextifier-preview-pane" });
+
+    this.navigator = new ProjectNavigator(this.navigatorPane, {
+      onOpen: (location) => void this.openProjectLocation(location, true)
+    });
+
+    const projectCompletion = createLatexCompletionSource(
+      () => this.session?.index.current ?? null,
+      () => this.plugin.settings.autoCloseEnvironment
+    );
+    const texlabCompletion = createTexlabCompletionSource(
+      () => this.session?.texlab ?? null,
+      () => this.file ? this.plugin.absolutePath(this.file.path) : null
+    );
 
     this.editor = new EditorView({
       parent: editorPane,
@@ -88,6 +126,7 @@ export class LatexEditorView extends TextFileView {
           highlightActiveLineGutter(),
           highlightSpecialChars(),
           history(),
+          closeBrackets(),
           drawSelection(),
           dropCursor(),
           rectangularSelection(),
@@ -95,30 +134,54 @@ export class LatexEditorView extends TextFileView {
           highlightActiveLine(),
           EditorView.lineWrapping,
           latexHighlightExtension(),
-          autocompletion({ override: [latexCompletionSource], activateOnTyping: true }),
+          liveLatexReadingExtension(
+            () => this.liveLatex,
+            () => this.session?.index.current ?? null,
+            (source, container) => this.session
+              ? this.plugin.renderProjectLatexBlock(source, container, this.session)
+              : this.plugin.renderLatexBlock(source, container)
+          ),
+          smartEditingExtension(() => this.plugin.settings),
+          autocompletion({
+            override: [projectCompletion, texlabCompletion],
+            activateOnTyping: true,
+            maxRenderedOptions: 100
+          }),
           keymap.of([
+            indentWithTab,
+            ...closeBracketsKeymap,
             ...defaultKeymap,
             ...historyKeymap,
             ...searchKeymap,
             ...completionKeymap
           ]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged && !this.applyingExternalData) this.scheduleSave();
+            if (update.docChanged && !this.applyingExternalData) {
+              this.scheduleSave();
+              this.scheduleTexlabChange();
+            }
           })
         ]
       })
     });
+    this.editor.scrollDOM.addEventListener("scroll", () => this.scheduleSourceSync(), { passive: true });
 
     this.previewVisible = this.plugin.settings.previewVisibleByDefault;
+    this.navigatorVisible = this.plugin.settings.navigatorVisibleByDefault;
+    this.continuousSync = this.plugin.settings.continuousSyncByDefault;
+    this.liveLatex = this.plugin.settings.liveLatexByDefault;
+
     this.renderer = new PdfRenderer(this.previewPane, {
-      onInversePoint: (point) => void this.inverseSearch(point),
+      onInversePoint: (point) => void this.inverseSearch(point, true),
+      onScrollPoint: (point) => void this.handlePdfScroll(point),
       onStatus: (page, pages, scale) => {
         if (pages > 0 && this.statusEl && !this.session?.compiler.compiling) {
           this.statusEl.setText("PDF " + String(page) + "/" + String(pages) + " · " + String(Math.round(scale * 100)) + "%");
         }
       }
     });
-    this.applyPreviewVisibility();
+    this.applyVisibility();
+    this.updateToggleButtons();
   }
 
   async onLoadFile(file: TFile): Promise<void> {
@@ -127,14 +190,16 @@ export class LatexEditorView extends TextFileView {
   }
 
   async onUnloadFile(file: TFile): Promise<void> {
-    this.cancelSaveTimer();
+    this.cancelTimers();
+    this.session?.texlab.close(this.plugin.absolutePath(file.path));
     await this.save();
     this.detachCurrentSession();
     await super.onUnloadFile(file);
   }
 
   async onClose(): Promise<void> {
-    this.cancelSaveTimer();
+    this.cancelTimers();
+    if (this.file) this.session?.texlab.close(this.plugin.absolutePath(this.file.path));
     try {
       await this.save();
     } catch {
@@ -145,6 +210,7 @@ export class LatexEditorView extends TextFileView {
     this.renderer = null;
     this.editor?.destroy();
     this.editor = null;
+    this.navigator = null;
   }
 
   getViewData(): string {
@@ -166,6 +232,7 @@ export class LatexEditorView extends TextFileView {
     } finally {
       this.applyingExternalData = false;
     }
+    this.scheduleTexlabChange();
   }
 
   clear(): void {
@@ -196,20 +263,79 @@ export class LatexEditorView extends TextFileView {
       new Notice("SyncTeX could not map the current cursor position.");
       return;
     }
+    this.guardSync(420);
     await this.renderer?.reveal(box);
   }
 
   togglePreview(): void {
     this.previewVisible = !this.previewVisible;
-    this.applyPreviewVisibility();
+    this.applyVisibility();
   }
 
-  focusLocation(line: number, column = 0): void {
+  toggleNavigator(): void {
+    this.navigatorVisible = !this.navigatorVisible;
+    this.applyVisibility();
+    this.updateToggleButtons();
+  }
+
+  toggleContinuousSync(): void {
+    this.continuousSync = !this.continuousSync;
+    this.updateToggleButtons();
+    if (this.continuousSync) this.scheduleSourceSync();
+  }
+
+  toggleLiveLatex(): void {
+    this.liveLatex = !this.liveLatex;
+    this.editor?.dispatch({ effects: refreshLiveLatexEffect.of(undefined) });
+    this.updateToggleButtons();
+  }
+
+  showSymbolPalette(): void {
+    new SymbolPaletteModal(this.plugin.app, (latex) => this.insertLatex(latex)).open();
+  }
+
+  async exportPortableHtml(): Promise<void> {
+    if (!this.session) {
+      new Notice("No TeX project session is attached.");
+      return;
+    }
+    await this.flushSave();
+    try {
+      const path = await this.plugin.exportSessionHtml(this.session);
+      new Notice("Portable project exported: " + path, 7000);
+    } catch (error) {
+      new Notice("Portable project export failed: " + String(error), 7000);
+    }
+  }
+
+  showReferenceGraph(): void {
+    const snapshot = this.session?.index.current;
+    if (!snapshot || snapshot.references.length === 0) {
+      new Notice("No project reference graph is available yet.");
+      return;
+    }
+    new ReferenceGraphModal(this.plugin.app, snapshot, {
+      onOpen: (location) => void this.openProjectLocation(location, true)
+    }).open();
+  }
+
+  insertLatex(value: string): void {
+    if (!this.editor) return;
+    const selection = this.editor.state.selection.main;
+    const cursorOffset = value.indexOf("{}") >= 0 ? value.indexOf("{}") + 1 : value.length;
+    this.editor.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: value },
+      selection: { anchor: selection.from + cursorOffset }
+    });
+    this.editor.focus();
+  }
+
+  focusLocation(line: number, column = 0, focus = true): void {
     if (!this.editor || line < 1 || line > this.editor.state.doc.lines) return;
     const target = this.editor.state.doc.line(line);
     const anchor = Math.min(target.to, target.from + Math.max(0, column));
     this.editor.dispatch({ selection: { anchor }, scrollIntoView: true });
-    this.editor.focus();
+    if (focus) this.editor.focus();
   }
 
   private async attachSession(file: TFile): Promise<void> {
@@ -224,10 +350,16 @@ export class LatexEditorView extends TextFileView {
     this.session = handle.session;
     this.detachSession = handle.session.on((event) => this.onSessionEvent(event));
 
+    if (handle.session.index.current.updatedAt > 0) {
+      this.navigator?.setSnapshot(handle.session.index.current);
+    }
+
+    void handle.session.texlab.open(this.plugin.absolutePath(file.path), this.getViewData());
+
     const previous = handle.session.lastResult;
     if (previous?.pdfData) {
       await this.renderer?.load(previous.pdfData);
-      this.renderProblems(previous.diagnostics);
+      this.renderCombinedProblems(previous.diagnostics);
     } else if (this.plugin.settings.autoCompile) {
       handle.session.request("fast");
     }
@@ -247,8 +379,26 @@ export class LatexEditorView extends TextFileView {
       return;
     }
 
+    if (event.type === "index") {
+      this.navigator?.setSnapshot(event.snapshot);
+      this.editor?.dispatch({ effects: refreshLiveLatexEffect.of(undefined) });
+      return;
+    }
+
+    if (event.type === "texlab-diagnostics") {
+      if (this.file && this.plugin.absolutePath(this.file.path) === event.file) {
+        this.renderCombinedProblems(this.session?.lastResult?.diagnostics ?? []);
+      }
+      return;
+    }
+
+    if (event.type === "texlab-status") {
+      if (event.status === "ready" && !this.session?.compiler.compiling) this.statusEl?.setText("TexLab ready");
+      return;
+    }
+
     if (event.type === "failure") {
-      this.statusEl?.setText("Build failed");
+      this.statusEl?.setText("Build or language service failed");
       new Notice(event.error.message, 7000);
       return;
     }
@@ -259,7 +409,7 @@ export class LatexEditorView extends TextFileView {
         ? result.engine + " · " + (result.durationMs / 1000).toFixed(2) + "s"
         : "Build failed"
     );
-    this.renderProblems(result.diagnostics);
+    this.renderCombinedProblems(result.diagnostics);
 
     if (result.ok && result.pdfData) {
       void this.renderer?.load(result.pdfData);
@@ -268,6 +418,16 @@ export class LatexEditorView extends TextFileView {
       if (first?.line && !first.file) this.focusLocation(first.line, first.column);
       if (first) new Notice(first.message, 7000);
     }
+  }
+
+  private renderCombinedProblems(compilerDiagnostics: Diagnostic[]): void {
+    if (!this.file || !this.session) {
+      this.renderProblems(compilerDiagnostics);
+      return;
+    }
+    const file = this.plugin.absolutePath(this.file.path);
+    const texlab = this.session.texlabDiagnostics.get(file) ?? [];
+    this.renderProblems(dedupeDiagnostics([...compilerDiagnostics, ...texlab]));
   }
 
   private renderProblems(diagnostics: Diagnostic[]): void {
@@ -280,36 +440,98 @@ export class LatexEditorView extends TextFileView {
     this.problemsEl.open = wasOpen;
 
     if (diagnostics.length === 0) {
-      this.problemsEl.createDiv({ cls: "latextifier-problem-empty", text: "No compiler diagnostics." });
+      this.problemsEl.createDiv({ cls: "latextifier-problem-empty", text: "No compiler or TexLab diagnostics." });
       return;
     }
 
-    for (const diagnostic of diagnostics.slice(0, 80)) {
+    for (const diagnostic of diagnostics.slice(0, 120)) {
       const row = this.problemsEl.createEl("button", {
-        cls: "latextifier-problem latextifier-problem-" + diagnostic.severity
+        cls: "latextifier-problem latextifier-problem-" + diagnostic.severity,
+        attr: { type: "button" }
       });
       row.createSpan({ cls: "latextifier-problem-message", text: diagnostic.message });
       if (diagnostic.line) {
         row.createSpan({ cls: "latextifier-problem-line", text: "line " + String(diagnostic.line) });
-        row.addEventListener("click", () => this.focusLocation(diagnostic.line ?? 1, diagnostic.column));
+        row.addEventListener("click", () => {
+          if (diagnostic.file && this.file && diagnostic.file !== this.plugin.absolutePath(this.file.path)) {
+            void this.openProjectLocation({
+              file: diagnostic.file,
+              line: diagnostic.line ?? 1,
+              column: diagnostic.column ?? 0
+            }, true);
+          } else {
+            this.focusLocation(diagnostic.line ?? 1, diagnostic.column);
+          }
+        });
       } else {
         row.disabled = true;
       }
     }
   }
 
-  private async inverseSearch(point: PdfPoint): Promise<void> {
+  private async inverseSearch(point: PdfPoint, focus: boolean): Promise<void> {
     if (!this.session) return;
     const location = await this.plugin.inverseSearch(this.session, point);
     if (!location) {
-      new Notice("SyncTeX could not map that PDF position.");
+      if (focus) new Notice("SyncTeX could not map that PDF position.");
       return;
     }
-    await this.plugin.openSourceLocation(this.leaf, location);
+    await this.openProjectLocation(location, focus);
+  }
+
+  private async handlePdfScroll(point: PdfPoint): Promise<void> {
+    if (!this.continuousSync || this.isSyncGuarded() || !this.session) return;
+    this.guardSync(360);
+    await this.inverseSearch(point, false);
+  }
+
+  private scheduleSourceSync(): void {
+    if (!this.continuousSync || this.isSyncGuarded() || !this.editor || !this.file || !this.session) return;
+    if (this.sourceSyncTimer !== null) window.clearTimeout(this.sourceSyncTimer);
+    this.sourceSyncTimer = window.setTimeout(() => {
+      this.sourceSyncTimer = null;
+      void this.syncSourceViewportToPdf();
+    }, 140);
+  }
+
+  private async syncSourceViewportToPdf(): Promise<void> {
+    if (!this.continuousSync || this.isSyncGuarded() || !this.editor || !this.file || !this.session) return;
+    const block = this.editor.lineBlockAtHeight(this.editor.scrollDOM.scrollTop + 24);
+    const line = this.editor.state.doc.lineAt(block.from);
+    const box = await this.plugin.forwardSearch(
+      this.session,
+      this.file,
+      line.number,
+      0
+    );
+    if (!box || !this.continuousSync) return;
+    this.guardSync(360);
+    await this.renderer?.reveal(box);
+  }
+
+  private async showTexlabHover(): Promise<void> {
+    if (!this.editor || !this.file || !this.session) return;
+    const head = this.editor.state.selection.main.head;
+    const line = this.editor.state.doc.lineAt(head);
+    const hover = await this.session.texlab.hover(
+      this.plugin.absolutePath(this.file.path),
+      line.number,
+      head - line.from
+    );
+    if (!hover?.markdown) {
+      new Notice("No TexLab information at the cursor.");
+      return;
+    }
+    new Notice(hover.markdown.slice(0, 3500), 9000);
+  }
+
+  private async openProjectLocation(location: SourceLocation, focus: boolean): Promise<void> {
+    this.guardSync(420);
+    await this.plugin.openSourceLocation(this.leaf, location, focus);
   }
 
   private scheduleSave(): void {
-    this.cancelSaveTimer();
+    if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
       void this.save().then(() => {
@@ -320,21 +542,52 @@ export class LatexEditorView extends TextFileView {
     }, this.plugin.settings.compileDebounceMs);
   }
 
-  private async flushSave(): Promise<void> {
-    this.cancelSaveTimer();
-    await this.save();
+  private scheduleTexlabChange(): void {
+    if (!this.file || !this.session) return;
+    if (this.texlabChangeTimer !== null) window.clearTimeout(this.texlabChangeTimer);
+    this.texlabChangeTimer = window.setTimeout(() => {
+      this.texlabChangeTimer = null;
+      if (!this.file || !this.session) return;
+      void this.session.texlab.change(this.plugin.absolutePath(this.file.path), this.getViewData());
+    }, 120);
   }
 
-  private cancelSaveTimer(): void {
+  private async flushSave(): Promise<void> {
     if (this.saveTimer !== null) {
       window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    await this.save();
   }
 
-  private applyPreviewVisibility(): void {
+  private cancelTimers(): void {
+    if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+    if (this.texlabChangeTimer !== null) window.clearTimeout(this.texlabChangeTimer);
+    if (this.sourceSyncTimer !== null) window.clearTimeout(this.sourceSyncTimer);
+    this.saveTimer = null;
+    this.texlabChangeTimer = null;
+    this.sourceSyncTimer = null;
+  }
+
+  private guardSync(durationMs: number): void {
+    this.syncGuardUntil = Date.now() + durationMs;
+  }
+
+  private isSyncGuarded(): boolean {
+    return Date.now() < this.syncGuardUntil;
+  }
+
+  private applyVisibility(): void {
     this.previewPane?.toggleClass("is-hidden", !this.previewVisible);
+    this.navigatorPane?.toggleClass("is-hidden", !this.navigatorVisible);
     this.contentEl.toggleClass("latextifier-preview-hidden", !this.previewVisible);
+    this.contentEl.toggleClass("latextifier-navigator-hidden", !this.navigatorVisible);
+  }
+
+  private updateToggleButtons(): void {
+    setPressed(this.scrollLockButton, this.continuousSync);
+    setPressed(this.navigatorButton, this.navigatorVisible);
+    setPressed(this.liveLatexButton, this.liveLatex);
   }
 
   private addToolbarButton(
@@ -342,12 +595,31 @@ export class LatexEditorView extends TextFileView {
     icon: string,
     label: string,
     action: () => void
-  ): void {
+  ): HTMLButtonElement {
     const button = parent.createEl("button", {
       cls: "clickable-icon latextifier-toolbar-button",
-      attr: { "aria-label": label }
+      attr: { "aria-label": label, type: "button" }
     });
     setIcon(button, icon);
     button.addEventListener("click", action);
+    return button;
   }
+}
+
+function setPressed(button: HTMLButtonElement | null, pressed: boolean): void {
+  if (!button) return;
+  button.toggleClass("is-active", pressed);
+  button.setAttribute("aria-pressed", pressed ? "true" : "false");
+}
+
+function dedupeDiagnostics(items: Diagnostic[]): Diagnostic[] {
+  const seen = new Set<string>();
+  const result: Diagnostic[] = [];
+  for (const item of items) {
+    const key = [item.severity, item.file ?? "", item.line ?? "", item.column ?? "", item.message].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
 }

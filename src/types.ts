@@ -56,5 +56,12 @@ export interface LatextifierSettings {
   dvisvgmPath: string;
   fragmentPreamble: string;
   previewVisibleByDefault: boolean;
+  continuousSyncByDefault: boolean;
+  navigatorVisibleByDefault: boolean;
+  liveLatexByDefault: boolean;
+  autoCloseEnvironment: boolean;
+  autoContinueItems: boolean;
+  enableTexlab: boolean;
+  texlabPath: string;
   allowShellEscape: boolean;
 }

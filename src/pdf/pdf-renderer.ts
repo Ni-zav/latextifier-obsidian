@@ -18,6 +18,7 @@ export interface PdfPoint {
 
 export interface PdfRendererCallbacks {
   onInversePoint?: (point: PdfPoint) => void;
+  onScrollPoint?: (point: PdfPoint) => void;
   onStatus?: (page: number, pages: number, scale: number) => void;
 }
 
@@ -96,6 +97,7 @@ export class PdfRenderer {
   private scale = 1;
   private totalPages = 0;
   private highlight: HTMLElement | null = null;
+  private scrollSyncTimer: number | null = null;
 
   constructor(
     private readonly host: HTMLElement,
@@ -124,7 +126,10 @@ export class PdfRenderer {
       { root: this.scrollEl, rootMargin: "900px 0px" }
     );
 
-    this.scrollEl.addEventListener("scroll", () => this.emitStatus(), { passive: true });
+    this.scrollEl.addEventListener("scroll", () => {
+      this.emitStatus();
+      this.scheduleScrollPoint();
+    }, { passive: true });
     this.scrollEl.addEventListener("dblclick", (event) => {
       const point = this.pointFromEvent(event);
       if (point) this.callbacks.onInversePoint?.(point);
@@ -190,6 +195,10 @@ export class PdfRenderer {
 
   destroy(): void {
     this.generation += 1;
+    if (this.scrollSyncTimer !== null) {
+      window.clearTimeout(this.scrollSyncTimer);
+      this.scrollSyncTimer = null;
+    }
     this.observer.disconnect();
     for (const task of this.renderTasks.values()) task.cancel();
     this.renderTasks.clear();
@@ -415,6 +424,20 @@ export class PdfRenderer {
     } catch {
       // Destruction races are harmless during reload/unload.
     }
+  }
+
+  private scheduleScrollPoint(): void {
+    if (!this.callbacks.onScrollPoint || this.totalPages < 1) return;
+    if (this.scrollSyncTimer !== null) window.clearTimeout(this.scrollSyncTimer);
+    this.scrollSyncTimer = window.setTimeout(() => {
+      this.scrollSyncTimer = null;
+      const page = this.currentPage();
+      const shell = this.shell(page);
+      if (!shell || page < 1) return;
+      const factor = CSS_PER_PT * this.scale;
+      const y = Math.max(0, (this.scrollEl.scrollTop - shell.offsetTop + 24) / factor);
+      this.callbacks.onScrollPoint?.({ page, x: 8 / factor, y });
+    }, 140);
   }
 
   private emitStatus(): void {

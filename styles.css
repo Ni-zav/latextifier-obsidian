@@ -46,13 +46,22 @@
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(190px, 240px) minmax(300px, 1fr) minmax(320px, 1fr);
 }
 
-.latextifier-preview-hidden .latextifier-workspace {
+.latextifier-navigator-hidden:not(.latextifier-preview-hidden) .latextifier-workspace {
+  grid-template-columns: minmax(300px, 1fr) minmax(320px, 1fr);
+}
+
+.latextifier-preview-hidden:not(.latextifier-navigator-hidden) .latextifier-workspace {
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
+}
+
+.latextifier-preview-hidden.latextifier-navigator-hidden .latextifier-workspace {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.latextifier-navigator-pane,
 .latextifier-editor-pane,
 .latextifier-preview-pane {
   min-width: 0;
@@ -60,12 +69,118 @@
   overflow: hidden;
 }
 
+.latextifier-navigator-pane {
+  border-right: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
 .latextifier-editor-pane {
   border-right: 1px solid var(--background-modifier-border);
 }
 
-.latextifier-preview-pane.is-hidden {
+.latextifier-preview-pane.is-hidden,
+.latextifier-navigator-pane.is-hidden {
   display: none;
+}
+
+.latextifier-toolbar-button.is-active {
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.latextifier-navigator {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.latextifier-navigator-header {
+  flex: 0 0 auto;
+  padding: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.latextifier-navigator-search {
+  width: 100%;
+  margin: 0 0 7px;
+}
+
+.latextifier-navigator-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.latextifier-navigator-tab {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.latextifier-navigator-tab:hover,
+.latextifier-navigator-tab.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.latextifier-navigator-tab.is-active {
+  font-weight: var(--font-semibold);
+}
+
+.latextifier-navigator-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
+}
+
+.latextifier-navigator-row {
+  width: 100%;
+  min-width: 0;
+  display: block;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  text-align: left;
+  background: transparent;
+}
+
+.latextifier-navigator-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.latextifier-navigator-title {
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.latextifier-nav-outline .latextifier-navigator-title {
+  padding-left: calc(var(--latextifier-outline-level, 0) * 9px);
+}
+
+.latextifier-navigator-detail {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.latextifier-navigator-empty {
+  padding: 18px 10px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
 }
 
 .latextifier-editor-pane .cm-editor {
@@ -257,14 +372,187 @@
   color: var(--text-muted);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .latextifier-workspace {
+    grid-template-columns: minmax(170px, 210px) minmax(300px, 1fr);
+  }
+
+  .latextifier-preview-pane {
+    display: none;
+  }
+
+  .latextifier-navigator-hidden .latextifier-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
   .latextifier-workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(280px, 1fr) minmax(240px, 1fr);
+  }
+
+  .latextifier-navigator-pane {
+    display: none;
   }
 
   .latextifier-editor-pane {
     border-right: 0;
-    border-bottom: 1px solid var(--background-modifier-border);
   }
+
+  .latextifier-toolbar {
+    gap: 4px;
+  }
+
+  .latextifier-actions {
+    overflow-x: auto;
+  }
+}
+
+
+.latextifier-live-math {
+  vertical-align: baseline;
+}
+
+.latextifier-live-math-inline {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 0 2px;
+  border-radius: var(--radius-s);
+}
+
+.latextifier-live-math-display {
+  display: block;
+  width: 100%;
+  padding: 8px 4px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.latextifier-live-math.is-fallback {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+.latextifier-live-reference {
+  display: inline-flex;
+  align-items: center;
+  max-width: 28ch;
+  padding: 1px 5px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-secondary-alt);
+  color: var(--text-accent);
+  font-size: 0.9em;
+  line-height: 1.35;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+
+.latextifier-live-theorem {
+  margin: 8px 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary-alt);
+}
+
+.latextifier-live-theorem-proof {
+  border-left-color: var(--text-muted);
+}
+
+.latextifier-live-theorem-header {
+  margin-bottom: 6px;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.latextifier-live-theorem-body {
+  color: var(--text-normal);
+  line-height: var(--line-height-normal);
+  white-space: pre-wrap;
+}
+
+.latextifier-live-theorem-math {
+  display: inline-flex;
+  padding-inline: 2px;
+}
+
+.latextifier-live-compiled-block {
+  min-height: 38px;
+  margin: 8px 2px;
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+}
+
+.latextifier-live-compiled-block.is-error {
+  color: var(--text-error);
+}
+
+
+.latextifier-graph-modal {
+  width: min(96vw, 1080px);
+}
+
+.latextifier-graph-modal .modal-content {
+  min-height: min(72vh, 720px);
+}
+
+.latextifier-graph-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.latextifier-graph-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.latextifier-graph-canvas {
+  min-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.latextifier-graph-canvas svg {
+  display: block;
+  min-width: 100%;
+}
+
+.latextifier-graph-edge {
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+}
+
+.latextifier-graph-node rect {
+  fill: var(--background-primary);
+  stroke: var(--background-modifier-border-hover);
+  stroke-width: 1.5;
+}
+
+.latextifier-graph-node text {
+  fill: var(--text-normal);
+  font-size: 12px;
+}
+
+.latextifier-graph-node.is-focus rect {
+  stroke: var(--interactive-accent);
+  stroke-width: 2.5;
+}
+
+.latextifier-graph-node.is-clickable {
+  cursor: pointer;
+}
+
+.latextifier-graph-node.is-clickable:hover rect {
+  fill: var(--background-modifier-hover);
 }

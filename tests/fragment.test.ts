@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wrapFragment } from "../src/markdown/fragment-compiler";
+import { wrapFragment, wrapFragmentFallback } from "../src/markdown/fragment-compiler";
 
 describe("fragment wrapper", () => {
   it("creates a valid standalone document", () => {
@@ -14,6 +14,12 @@ describe("fragment wrapper", () => {
   it("adds common packages only when needed", () => {
     expect(wrapFragment("\\begin{tikzpicture}\\end{tikzpicture}", "")).toContain("\\usepackage{tikz}");
     expect(wrapFragment("\\toprule", "")).toContain("\\usepackage{booktabs}");
+  });
+
+  it("provides a plain article fallback without standalone.cls", () => {
+    const result = wrapFragmentFallback("\\frac{a}{b}", "");
+    expect(result).toContain("\\documentclass{article}");
+    expect(result).not.toContain("standalone");
   });
 
   it("does not wrap complete documents", () => {

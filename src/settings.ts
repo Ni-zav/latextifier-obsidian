@@ -1,6 +1,6 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, type SettingDefinitionItem } from "obsidian";
 import type LatextifierPlugin from "./main";
-import type { Engine, LatextifierSettings } from "./types";
+import type { LatextifierSettings } from "./types";
 
 export const DEFAULT_SETTINGS: LatextifierSettings = {
   compileDebounceMs: 400,
@@ -13,144 +13,200 @@ export const DEFAULT_SETTINGS: LatextifierSettings = {
   dvisvgmPath: "",
   fragmentPreamble: "",
   previewVisibleByDefault: true,
+  continuousSyncByDefault: true,
+  navigatorVisibleByDefault: true,
+  liveLatexByDefault: true,
+  autoCloseEnvironment: true,
+  autoContinueItems: true,
+  enableTexlab: true,
+  texlabPath: "",
   allowShellEscape: false
 };
 
+type SettingKey = keyof LatextifierSettings;
+
 export class LatextifierSettingTab extends PluginSettingTab {
-  constructor(app: App, private readonly plugin: LatextifierPlugin) {
-    super(app, plugin);
+  constructor(app: App, private readonly latextifier: LatextifierPlugin) {
+    super(app, latextifier);
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    new Setting(containerEl).setName("Rendering").setHeading();
-
-    new Setting(containerEl)
-      .setName("Compile while typing")
-      .setDesc("Save and request a coalesced TeX build after the typing debounce.")
-      .addToggle((toggle) => toggle
-        .setValue(this.plugin.settings.autoCompile)
-        .onChange(async (value) => {
-          this.plugin.settings.autoCompile = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName("Compile debounce")
-      .setDesc("Delay after the latest edit before saving and compiling.")
-      .addSlider((slider) => slider
-        .setLimits(100, 2000, 50)
-        .setValue(this.plugin.settings.compileDebounceMs)
-        .onChange(async (value) => {
-          this.plugin.settings.compileDebounceMs = value;
-          await this.plugin.saveSettings();
-        }));
-
-    engineSetting(containerEl, "Default project engine", this.plugin.settings.defaultEngine, async (value) => {
-      this.plugin.settings.defaultEngine = value;
-      await this.plugin.saveSettings();
-    });
-
-    engineSetting(containerEl, "Markdown fragment engine", this.plugin.settings.fragmentEngine, async (value) => {
-      this.plugin.settings.fragmentEngine = value;
-      await this.plugin.saveSettings();
-      this.plugin.onFragmentSettingsChanged();
-    });
-
-    new Setting(containerEl)
-      .setName("TeX binary directory")
-      .setDesc("Optional directory prepended to PATH, for example /Library/TeX/texbin.")
-      .addText((text) => text
-        .setPlaceholder("Use system PATH")
-        .setValue(this.plugin.settings.texBinDir)
-        .onChange(async (value) => {
-          this.plugin.settings.texBinDir = value.trim();
-          await this.plugin.saveSettings();
-          this.plugin.onFragmentSettingsChanged();
-        }));
-
-    pathSetting(containerEl, "latexmk executable", this.plugin.settings.latexmkPath, async (value) => {
-      this.plugin.settings.latexmkPath = value;
-      await this.plugin.saveSettings();
-    });
-
-    pathSetting(containerEl, "SyncTeX executable", this.plugin.settings.synctexPath, async (value) => {
-      this.plugin.settings.synctexPath = value;
-      await this.plugin.saveSettings();
-    });
-
-    pathSetting(containerEl, "dvisvgm executable", this.plugin.settings.dvisvgmPath, async (value) => {
-      this.plugin.settings.dvisvgmPath = value;
-      await this.plugin.saveSettings();
-      this.plugin.onFragmentSettingsChanged();
-    });
-
-    new Setting(containerEl)
-      .setName("Fragment preamble")
-      .setDesc("Extra packages/macros inserted into compiled Markdown LaTeX blocks.")
-      .addTextArea((text) => text
-        .setPlaceholder("\\usepackage{physics}")
-        .setValue(this.plugin.settings.fragmentPreamble)
-        .onChange(async (value) => {
-          this.plugin.settings.fragmentPreamble = value;
-          await this.plugin.saveSettings();
-          this.plugin.onFragmentSettingsChanged();
-        }));
-
-    new Setting(containerEl)
-      .setName("Show PDF preview by default")
-      .addToggle((toggle) => toggle
-        .setValue(this.plugin.settings.previewVisibleByDefault)
-        .onChange(async (value) => {
-          this.plugin.settings.previewVisibleByDefault = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName("Allow TeX shell escape")
-      .setDesc("Off by default. Enabling this lets trusted TeX documents execute external commands.")
-      .addToggle((toggle) => toggle
-        .setValue(this.plugin.settings.allowShellEscape)
-        .onChange(async (value) => {
-          this.plugin.settings.allowShellEscape = value;
-          await this.plugin.saveSettings();
-          this.plugin.onFragmentSettingsChanged();
-        }));
+  getSettingDefinitions(): SettingDefinitionItem<SettingKey>[] {
+    return [
+      {
+        type: "group",
+        heading: "Rendering",
+        items: [
+          {
+            name: "Compile while typing",
+            desc: "Save and request a coalesced build after the typing debounce.",
+            control: { type: "toggle", key: "autoCompile", defaultValue: true }
+          },
+          {
+            name: "Compile debounce",
+            desc: "Delay after the latest edit before saving and compiling.",
+            control: {
+              type: "slider",
+              key: "compileDebounceMs",
+              min: 100,
+              max: 2000,
+              step: 50,
+              defaultValue: 400
+            }
+          },
+          {
+            name: "Default project engine",
+            control: {
+              type: "dropdown",
+              key: "defaultEngine",
+              defaultValue: "pdflatex",
+              options: {
+                pdflatex: "pdfLaTeX",
+                xelatex: "XeLaTeX",
+                lualatex: "LuaLaTeX"
+              }
+            }
+          },
+          {
+            name: "Markdown fragment engine",
+            control: {
+              type: "dropdown",
+              key: "fragmentEngine",
+              defaultValue: "pdflatex",
+              options: {
+                pdflatex: "pdfLaTeX",
+                xelatex: "XeLaTeX",
+                lualatex: "LuaLaTeX"
+              }
+            }
+          },
+          {
+            name: "TeX binary directory",
+            desc: "Optional directory prepended to PATH, for example /Library/TeX/texbin.",
+            aliases: ["PATH", "MacTeX", "TeX Live"],
+            control: {
+              type: "text",
+              key: "texBinDir",
+              placeholder: "Use system PATH",
+              defaultValue: ""
+            }
+          },
+          {
+            name: "latexmk executable",
+            desc: "Leave blank to resolve latexmk from PATH.",
+            control: { type: "text", key: "latexmkPath", placeholder: "Use PATH", defaultValue: "" }
+          },
+          {
+            name: "SyncTeX executable",
+            desc: "Leave blank to resolve SyncTeX from PATH.",
+            control: { type: "text", key: "synctexPath", placeholder: "Use PATH", defaultValue: "" }
+          },
+          {
+            name: "dvisvgm executable",
+            desc: "Optional converter used for crisp SVG fragment output.",
+            control: { type: "text", key: "dvisvgmPath", placeholder: "Use PATH", defaultValue: "" }
+          },
+          {
+            name: "Fragment preamble",
+            desc: "Extra packages and macros inserted into compiled Markdown LaTeX blocks.",
+            control: {
+              type: "textarea",
+              key: "fragmentPreamble",
+              placeholder: "\\usepackage{physics}",
+              rows: 6,
+              defaultValue: ""
+            }
+          },
+          {
+            name: "Show PDF preview by default",
+            control: { type: "toggle", key: "previewVisibleByDefault", defaultValue: true }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Editing intelligence",
+        items: [
+          {
+            name: "Continuous source and PDF sync",
+            desc: "Keep source and PDF panes synchronized while scrolling using SyncTeX.",
+            control: { type: "toggle", key: "continuousSyncByDefault", defaultValue: true }
+          },
+          {
+            name: "Show project navigator by default",
+            desc: "Show structure, TODOs, project files, references, and citations beside the editor.",
+            control: { type: "toggle", key: "navigatorVisibleByDefault", defaultValue: true }
+          },
+          {
+            name: "Live LaTeX reading",
+            desc: "Render visible math, theorem blocks, references, TikZ, and tables until the cursor enters them.",
+            control: { type: "toggle", key: "liveLatexByDefault", defaultValue: true }
+          },
+          {
+            name: "Auto-close environments",
+            desc: "Insert a matching end environment when completing or entering a begin environment.",
+            control: { type: "toggle", key: "autoCloseEnvironment", defaultValue: true }
+          },
+          {
+            name: "Continue list items",
+            desc: "Press Enter after an item to insert the next item with matching indentation.",
+            control: { type: "toggle", key: "autoContinueItems", defaultValue: true }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Language server",
+        items: [
+          {
+            name: "Enable TexLab",
+            desc: "Use TexLab when installed for LSP completion, snippets, hover, and diagnostics. Built-in project intelligence remains available without it.",
+            aliases: ["LSP", "language server"],
+            control: { type: "toggle", key: "enableTexlab", defaultValue: true }
+          },
+          {
+            name: "TexLab executable",
+            desc: "Leave blank to resolve TexLab from PATH.",
+            aliases: ["LSP"],
+            visible: () => this.latextifier.settings.enableTexlab,
+            control: { type: "text", key: "texlabPath", placeholder: "Use PATH", defaultValue: "" }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Security",
+        items: [
+          {
+            name: "Allow TeX shell escape",
+            desc: "Off by default. Enabling this lets trusted TeX documents execute external commands.",
+            control: { type: "toggle", key: "allowShellEscape", defaultValue: false }
+          }
+        ]
+      }
+    ];
   }
-}
 
-function engineSetting(
-  container: HTMLElement,
-  name: string,
-  value: Engine,
-  change: (value: Engine) => Promise<void>
-): void {
-  new Setting(container)
-    .setName(name)
-    .addDropdown((dropdown) => dropdown
-      .addOption("pdflatex", "pdfLaTeX")
-      .addOption("xelatex", "XeLaTeX")
-      .addOption("lualatex", "LuaLaTeX")
-      .setValue(value)
-      .onChange(async (next) => {
-        await change(next as Engine);
-      }));
-}
+  override getControlValue(key: SettingKey): unknown {
+    return this.latextifier.settings[key];
+  }
 
-function pathSetting(
-  container: HTMLElement,
-  name: string,
-  value: string,
-  change: (value: string) => Promise<void>
-): void {
-  new Setting(container)
-    .setName(name)
-    .setDesc("Leave blank to resolve it from PATH.")
-    .addText((text) => text
-      .setPlaceholder("Use PATH")
-      .setValue(value)
-      .onChange(async (next) => {
-        await change(next.trim());
-      }));
+  override async setControlValue(key: SettingKey, value: unknown): Promise<void> {
+    const settings = this.latextifier.settings as unknown as Record<SettingKey, unknown>;
+    settings[key] = value;
+    await this.latextifier.saveSettings();
+
+    if (key === "enableTexlab" || key === "texlabPath" || key === "texBinDir") {
+      this.latextifier.onLanguageSettingsChanged();
+    }
+
+    if (
+      key === "fragmentEngine"
+      || key === "texBinDir"
+      || key === "dvisvgmPath"
+      || key === "fragmentPreamble"
+      || key === "allowShellEscape"
+    ) {
+      this.latextifier.onFragmentSettingsChanged();
+    }
+  }
 }

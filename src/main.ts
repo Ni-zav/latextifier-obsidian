@@ -14,6 +14,7 @@ import { MarkdownLatexRenderer } from "./markdown/renderer";
 import { resolveProjectRoot } from "./core/project";
 import { SessionRegistry, type LatexSession } from "./core/session";
 import { forwardSearch, inverseSearch } from "./core/synctex";
+import { exportPortableProjectHtml } from "./core/export-html";
 import { DEFAULT_SETTINGS, LatextifierSettingTab } from "./settings";
 import type { LatextifierSettings, PdfBox, SourceLocation } from "./types";
 import type { PdfPoint } from "./pdf/pdf-renderer";
@@ -34,13 +35,38 @@ export default class LatextifierPlugin extends Plugin {
     this.registerView(LATEX_VIEW_TYPE, (leaf) => new LatexEditorView(leaf, this));
     this.registerExtensions(["tex", "sty", "cls"], LATEX_VIEW_TYPE);
 
-    this.registerMarkdownCodeBlockProcessor("latex", async (source, el) => {
-      await this.markdownRenderer.render(source, el);
+    this.registerMarkdownCodeBlockProcessor("latex", async (source, el, context) => {
+      const contextDir = context.sourcePath ? dirname(this.absolutePath(context.sourcePath)) : undefined;
+      await this.markdownRenderer.render(source, el, { contextDir });
     });
-    this.registerMarkdownCodeBlockProcessor("tex", async (source, el) => {
-      await this.markdownRenderer.render(source, el);
+    this.registerMarkdownCodeBlockProcessor("tex", async (source, el, context) => {
+      const contextDir = context.sourcePath ? dirname(this.absolutePath(context.sourcePath)) : undefined;
+      await this.markdownRenderer.render(source, el, { contextDir });
     });
     this.registerEditorExtension(latexBlockLivePreview(this.markdownRenderer));
+
+    const projectExtensions = new Set(["tex", "sty", "cls", "bib"]);
+    this.registerEvent(this.app.vault.on("modify", (file) => {
+      if (file instanceof TFile && projectExtensions.has(file.extension.toLowerCase())) {
+        this.sessions.notifyChanged(this.absolutePath(file.path), true);
+      }
+    }));
+    this.registerEvent(this.app.vault.on("create", (file) => {
+      if (file instanceof TFile && projectExtensions.has(file.extension.toLowerCase())) {
+        this.sessions.notifyChanged(this.absolutePath(file.path), true);
+      }
+    }));
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      if (file instanceof TFile && projectExtensions.has(file.extension.toLowerCase())) {
+        this.sessions.notifyChanged(this.absolutePath(file.path), true);
+      }
+    }));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      if (file instanceof TFile && projectExtensions.has(file.extension.toLowerCase())) {
+        this.sessions.notifyChanged(this.absolutePath(oldPath), false);
+        this.sessions.notifyChanged(this.absolutePath(file.path), true);
+      }
+    }));
 
     this.addSettingTab(new LatextifierSettingTab(this.app, this));
     this.statusEl = this.addStatusBarItem();
@@ -75,6 +101,42 @@ export default class LatextifierPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "toggle-continuous-synctex",
+      name: "Toggle continuous source and PDF sync",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.toggleContinuousSync())
+    });
+
+    this.addCommand({
+      id: "toggle-project-navigator",
+      name: "Toggle LaTeX project navigator",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.toggleNavigator())
+    });
+
+    this.addCommand({
+      id: "toggle-live-latex-reading",
+      name: "Toggle live LaTeX reading",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.toggleLiveLatex())
+    });
+
+    this.addCommand({
+      id: "open-reference-graph",
+      name: "Open LaTeX reference graph",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.showReferenceGraph())
+    });
+
+    this.addCommand({
+      id: "open-symbol-palette",
+      name: "Open LaTeX symbol palette",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => view.showSymbolPalette())
+    });
+
+    this.addCommand({
+      id: "export-portable-project-html",
+      name: "Export portable project HTML",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => void view.exportPortableHtml())
+    });
+
+    this.addCommand({
       id: "insert-latex-block",
       name: "Insert LaTeX block",
       editorCallback: (editor) => {
@@ -97,6 +159,33 @@ export default class LatextifierPlugin extends Plugin {
 
   onFragmentSettingsChanged(): void {
     this.fragmentCompiler.clear();
+  }
+
+  onLanguageSettingsChanged(): void {
+    this.sessions.resetTexlab();
+  }
+
+  async renderLatexBlock(source: string, container: HTMLElement): Promise<void> {
+    await this.markdownRenderer.render(source, container);
+  }
+
+  async renderProjectLatexBlock(
+    source: string,
+    container: HTMLElement,
+    session: LatexSession
+  ): Promise<void> {
+    await this.markdownRenderer.render(source, container, {
+      extraPreamble: session.index.current.preamble,
+      contextDir: dirname(session.root)
+    });
+  }
+
+  async exportSessionHtml(session: LatexSession): Promise<string> {
+    const snapshot = session.index.current.updatedAt > 0
+      ? session.index.current
+      : await session.index.refresh();
+    const result = await exportPortableProjectHtml(snapshot, session.lastResult?.pdfData ?? null);
+    return result.path;
   }
 
   async acquireSessionFor(file: TFile): Promise<{ root: string; session: LatexSession }> {
@@ -152,7 +241,7 @@ export default class LatextifierPlugin extends Plugin {
     }
   }
 
-  async openSourceLocation(leaf: WorkspaceLeaf, location: SourceLocation): Promise<void> {
+  async openSourceLocation(leaf: WorkspaceLeaf, location: SourceLocation, focus = true): Promise<void> {
     const root = this.vaultRoot();
     const rel = relative(root, resolve(location.file));
     if (!rel || rel === ".." || rel.startsWith(".." + sep)) {
@@ -167,9 +256,9 @@ export default class LatextifierPlugin extends Plugin {
       return;
     }
 
-    await leaf.openFile(target, { active: true });
+    await leaf.openFile(target, { active: focus });
     if (leaf.view instanceof LatexEditorView) {
-      leaf.view.focusLocation(location.line, location.column ?? 0);
+      leaf.view.focusLocation(location.line, location.column ?? 0, focus);
     }
   }
 
@@ -224,6 +313,13 @@ function sanitizeSettings(value: unknown): LatextifierSettings {
   if (typeof value.dvisvgmPath === "string") settings.dvisvgmPath = value.dvisvgmPath.trim();
   if (typeof value.fragmentPreamble === "string") settings.fragmentPreamble = value.fragmentPreamble;
   if (typeof value.previewVisibleByDefault === "boolean") settings.previewVisibleByDefault = value.previewVisibleByDefault;
+  if (typeof value.continuousSyncByDefault === "boolean") settings.continuousSyncByDefault = value.continuousSyncByDefault;
+  if (typeof value.navigatorVisibleByDefault === "boolean") settings.navigatorVisibleByDefault = value.navigatorVisibleByDefault;
+  if (typeof value.liveLatexByDefault === "boolean") settings.liveLatexByDefault = value.liveLatexByDefault;
+  if (typeof value.autoCloseEnvironment === "boolean") settings.autoCloseEnvironment = value.autoCloseEnvironment;
+  if (typeof value.autoContinueItems === "boolean") settings.autoContinueItems = value.autoContinueItems;
+  if (typeof value.enableTexlab === "boolean") settings.enableTexlab = value.enableTexlab;
+  if (typeof value.texlabPath === "string") settings.texlabPath = value.texlabPath.trim();
   if (typeof value.allowShellEscape === "boolean") settings.allowShellEscape = value.allowShellEscape;
   return settings;
 }

@@ -2,62 +2,146 @@
 
 ## Product contract
 
-Latextifier serves two workflows without forcing one rendering pipeline onto both.
+Latextifier has two rendering lanes that share project/build infrastructure without forcing TeX-process latency onto ordinary Markdown math.
 
 ### Markdown lane
 
-For ordinary equations, spawning TeX would be a performance regression. The Markdown renderer classifies each fenced `latex`/`tex` block:
+A fenced latex/tex block is classified as:
 
-- **math:** render with Obsidian's MathJax API;
-- **tex:** compile a wrapped fragment locally and prefer sanitized SVG output;
-- **auto:** choose math unless the source contains document/package/TikZ/table/layout constructs.
+- **math** — render with Obsidian MathJax;
+- **tex** — run the local TeX fragment compiler and prefer sanitized SVG output;
+- **auto** — use MathJax unless packages, TikZ, tables, graphics, or document-level constructs require TeX.
 
-The same renderer is used in Reading view and Live Preview. Full-fragment results are content-addressed and deduplicated.
+Full fragments are content-addressed and cached. They may receive note/project context so relative includes and project macros resolve naturally. Build products live under the OS temp directory.
 
 ### Project lane
 
-Real TeX files use a dedicated `TextFileView`:
+Real TeX files use a dedicated TextFileView:
 
-```text
-+--------------------------+--------------------------+
-| CodeMirror source        | persistent PDF.js view   |
-|                          |                          |
-| save -> debounce --------+-> project session        |
-| cursor -> SyncTeX -------+-> PDF highlight          |
-| source focus <-----------+-- PDF double click       |
-+--------------------------+--------------------------+
-```
+    +----------------+-------------------------+----------------------+
+    | project index  | CodeMirror source       | persistent PDF.js    |
+    | outline        | live math/theorems      | lazy page renderer   |
+    | files/TODOs    | TexLab + built-in intel | text layer           |
+    | refs/cites     | compiler diagnostics    | SyncTeX              |
+    +----------------+-------------------------+----------------------+
 
-A session belongs to the resolved root document, not to an editor tab. Included chapters therefore share one compiler and one last-good PDF.
+A session belongs to the resolved root document, not an editor tab. Included chapters share:
 
-## Performance principles
+- one compiler queue;
+- one last-known-good PDF;
+- one project index;
+- one TexLab process;
+- one dependency set;
+- one reference graph.
 
-1. No TeX process or PDF.js load during plugin startup.
-2. Direct-engine builds for feedback; `latexmk` for explicit full builds.
-3. One build at a time per root; requests arriving while busy collapse into one newest follow-up build.
-4. The PDF view keeps its DOM and reading position across reloads.
-5. PDF pages render lazily around the viewport.
-6. Canvas resolution follows device pixel ratio while CSS size stays stable.
-7. Math-only Markdown blocks never touch the filesystem.
-8. Full-block compilation uses an in-memory promise cache keyed by source + preamble + engine.
-9. Project scans are bounded to the source ancestry and stop at the vault root.
+## Project intelligence
 
-## Build directories
+The built-in ProjectIndex recursively follows input/include/subfile and bibliography resources. It extracts:
 
-Project and fragment outputs live below the operating-system temp directory, not the vault. This avoids sync/indexing churn and accidental commits.
+- structure;
+- files;
+- packages;
+- labels;
+- citation metadata;
+- custom commands and environments;
+- reference edges;
+- TODO/FIXME markers;
+- reusable project preamble.
+
+Unchanged files are reused through mtime/size-backed caching. The built-in index remains useful when TexLab is absent; TexLab augments completion, snippets, hover, and diagnostics.
+
+## Continuous synchronization
+
+SyncTeX is used for:
+
+- explicit source → PDF jumps;
+- PDF → source jumps;
+- debounced source-scroll → PDF mapping;
+- debounced PDF-scroll → source mapping.
+
+A short reentrancy guard prevents source → PDF → source feedback loops. PDF programmatic movement preserves focus.
+
+## PDF rendering
+
+The PDF renderer is persistent across successful builds. It:
+
+- keeps scroll/page/zoom anchors;
+- renders only nearby pages;
+- limits retained canvases;
+- uses device-pixel-ratio-aware canvas backing sizes;
+- retains selectable PDF.js text layers;
+- flashes forward-SyncTeX locations.
+
+Failed builds never replace the last successful PDF.
+
+## Compilation
+
+### Project builds
+
+- fast mode runs the selected engine directly;
+- full mode uses latexmk when available;
+- at most one compiler process is active per project;
+- edits during compilation collapse into one newest follow-up build;
+- shell interpolation is never used;
+- shell escape is off unless explicitly enabled.
+
+### Fragment builds
+
+- ordinary math never spawns TeX;
+- full fragments compile in a content-addressed temp directory;
+- project/note context can be exposed via working directory and TEXINPUTS;
+- standalone.cls is preferred for tight output;
+- article is an automatic fallback;
+- dvisvgm SVG is preferred when available;
+- PDF canvas rendering is the fallback.
+
+## Live source reading
+
+Only visible source plus a bounded margin is transformed. When the cursor intersects a rendered construct, its original source remains editable.
+
+Supported live constructs include:
+
+- inline/display math;
+- equation/align/gather families;
+- theorem/lemma/proposition/corollary/definition/remark/example/proof cards;
+- reference/citation chips;
+- compiled TikZ and table blocks.
+
+This avoids reparsing/rendering an entire thesis on every keystroke.
+
+## Portable export
+
+Portable project HTML is generated locally with:
+
+- inline CSS;
+- escaped source;
+- project metadata;
+- references/citations/TODOs;
+- the last successful PDF as a data URI when available;
+- zero JavaScript and zero network dependencies.
+
+## Validation architecture
+
+Quality CI covers TypeScript, unit tests, lint, production bundling, and an installable artifact.
+
+A separate integration job installs a real TeX toolchain and exercises pdfLaTeX, XeLaTeX, LuaLaTeX, latexmk bibliography, multi-file dependencies, and SyncTeX round trips.
 
 ## Security boundaries
 
-TeX is executable document processing software. Even with shell escape disabled, trusted local documents may read files available to TeX through normal mechanisms.
+TeX is executable document-processing software. Defaults are deliberately conservative:
 
-Defaults:
-
-- `shell: false` for Node child processes;
-- `--shell-escape` never enabled implicitly;
-- no dependency downloads;
-- external SVG output is sanitized before insertion;
-- no telemetry/network services.
+- local-only operation;
+- no telemetry;
+- no remote compiler;
+- no automatic tool/package downloads;
+- child_process uses argument arrays with shell disabled;
+- TeX shell escape disabled by default;
+- generated SVG sanitized before insertion.
 
 ## Rust boundary
 
-The parser/build orchestration layer is deliberately isolated behind small TypeScript modules. A future Rust/WASM or Rust sidecar implementation can replace SyncTeX parsing, project parsing, log parsing, hashing, or structural LaTeX parsing after benchmarks show a real bottleneck.
+Rust, GPUI, and wgpu were evaluated explicitly. GPUI/wgpu do not map cleanly onto an Obsidian WorkspaceLeaf and would replace useful browser/PDF.js accessibility behavior without removing TeX compilation as the dominant cost.
+
+The parser/build boundaries stay narrow so Rust/WASM or a Rust sidecar can be introduced later for measured hotspots such as very large structural parsing or a persistent compiler daemon.
+
+See ADR-001.
