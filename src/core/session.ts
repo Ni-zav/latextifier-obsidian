@@ -79,6 +79,11 @@ export class LatexSession {
     ];
   }
 
+  resetTexlab(): void {
+    void this.texlab.reset();
+    this.texlabDiagnostics.clear();
+  }
+
   dispose(): void {
     this.index.invalidate();
     this.compiler.dispose();
@@ -132,6 +137,10 @@ export class SessionRegistry {
     for (const entry of this.entries.values()) {
       entry.session.markChanged(path, compile);
     }
+  }
+
+  resetTexlab(): void {
+    for (const entry of this.entries.values()) entry.session.resetTexlab();
   }
 
   dispose(): void {
