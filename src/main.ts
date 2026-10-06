@@ -14,6 +14,7 @@ import { MarkdownLatexRenderer } from "./markdown/renderer";
 import { resolveProjectRoot } from "./core/project";
 import { SessionRegistry, type LatexSession } from "./core/session";
 import { forwardSearch, inverseSearch } from "./core/synctex";
+import { exportPortableProjectHtml } from "./core/export-html";
 import { DEFAULT_SETTINGS, LatextifierSettingTab } from "./settings";
 import type { LatextifierSettings, PdfBox, SourceLocation } from "./types";
 import type { PdfPoint } from "./pdf/pdf-renderer";
@@ -130,6 +131,12 @@ export default class LatextifierPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "export-portable-project-html",
+      name: "Export portable project HTML",
+      checkCallback: (checking) => this.withActiveTexView(checking, (view) => void view.exportPortableHtml())
+    });
+
+    this.addCommand({
       id: "insert-latex-block",
       name: "Insert LaTeX block",
       editorCallback: (editor) => {
@@ -167,6 +174,14 @@ export default class LatextifierPlugin extends Plugin {
       extraPreamble: session.index.current.preamble,
       contextDir: dirname(session.root)
     });
+  }
+
+  async exportSessionHtml(session: LatexSession): Promise<string> {
+    const snapshot = session.index.current.updatedAt > 0
+      ? session.index.current
+      : await session.index.refresh();
+    const result = await exportPortableProjectHtml(snapshot, session.lastResult?.pdfData ?? null);
+    return result.path;
   }
 
   async acquireSessionFor(file: TFile): Promise<{ root: string; session: LatexSession }> {
