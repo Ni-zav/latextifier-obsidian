@@ -85,8 +85,12 @@ export class TexlabClient {
   }
 
   async change(file: string, text: string): Promise<void> {
-    if (!(await this.ensureStarted())) return;
     const uri = pathToFileURL(resolve(file)).href;
+    if (!this.versions.has(uri)) {
+      await this.open(file, text);
+      return;
+    }
+    if (!(await this.ensureStarted())) return;
     const version = (this.versions.get(uri) ?? 0) + 1;
     this.versions.set(uri, version);
     this.notify("textDocument/didChange", {
@@ -130,6 +134,26 @@ export class TexlabClient {
     const record = asRecord(result);
     const markdown = hoverContents(record?.contents);
     return markdown ? { markdown } : null;
+  }
+
+  async reset(): Promise<void> {
+    if (this.disposed) return;
+    if (this.ready) {
+      try {
+        await this.request("shutdown", null, 1200);
+      } catch {
+        // Restart remains best effort when the server is unhealthy.
+      }
+      this.notify("exit", null);
+    }
+    this.ready = false;
+    this.startPromise = null;
+    this.versions.clear();
+    this.rejectAll(new Error("TexLab configuration changed."));
+    this.process?.kill();
+    this.process = null;
+    this.buffer = Buffer.alloc(0);
+    this.callbacks.onStatus(this.settings().enableTexlab ? "stopped" : "unavailable");
   }
 
   async dispose(): Promise<void> {
